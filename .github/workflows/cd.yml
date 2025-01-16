@@ -4,6 +4,7 @@ on:
   push:
    tags:
      - '*'
+  workflow_dispatch:
 
 jobs:
   release:
@@ -14,7 +15,7 @@ jobs:
     runs-on: ${{ matrix.os }}
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
 
     - name: Get version
       id: get_version
@@ -34,6 +35,8 @@ jobs:
 
     - name: Build
       if: matrix.os != 'ubuntu-22.04'
+      env:
+        GITUI_RELEASE: 1
       run: cargo build
     - name: Run tests
       if: matrix.os != 'ubuntu-22.04'
@@ -68,15 +71,30 @@ jobs:
 
     - name: Build Release Mac
       if: matrix.os == 'macos-latest'
+      env:
+        GITUI_RELEASE: 1
       run: make release-mac
+    - name: Build Release Mac x86
+      if: matrix.os == 'macos-latest'
+      env:
+        GITUI_RELEASE: 1
+      run: |
+        rustup target add x86_64-apple-darwin
+        make release-mac-x86
     - name: Build Release Linux
       if: matrix.os == 'ubuntu-latest'
+      env:
+        GITUI_RELEASE: 1
       run: make release-linux-musl
     - name: Build Release Win
       if: matrix.os == 'windows-latest'
+      env:
+        GITUI_RELEASE: 1
       run: make release-win
     - name: Build Release Linux ARM
       if: matrix.os == 'ubuntu-22.04'
+      env:
+        GITUI_RELEASE: 1
       run: make release-linux-arm
 
     - name: Set SHA
@@ -88,9 +106,9 @@ jobs:
     - name: Extract release notes
       if: matrix.os == 'ubuntu-latest'
       id: release_notes
-      uses: ffurrer2/extract-release-notes@v1
+      uses: ffurrer2/extract-release-notes@v2
     - name: Release
-      uses: softprops/action-gh-release@v1
+      uses: softprops/action-gh-release@v2
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
@@ -102,7 +120,7 @@ jobs:
           ./release/*.msi
 
     - name: Bump homebrew-core formula
-      uses: mislav/bump-homebrew-formula-action@v2
+      uses: mislav/bump-homebrew-formula-action@v3
       if: "matrix.os == 'macos-latest' && !contains(github.ref, '-')" # skip prereleases
       env:
         COMMITTER_TOKEN: ${{ secrets.BREW_TOKEN }}

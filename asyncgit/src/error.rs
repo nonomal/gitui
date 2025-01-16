@@ -84,6 +84,44 @@ pub enum Error {
 	///
 	#[error("git hook error: {0}")]
 	Hooks(#[from] git2_hooks::HooksError),
+
+	///
+	#[error("sign builder error: {0}")]
+	SignBuilder(#[from] crate::sync::sign::SignBuilderError),
+
+	///
+	#[error("sign error: {0}")]
+	Sign(#[from] crate::sync::sign::SignError),
+
+	///
+	#[error("gix::discover error: {0}")]
+	GixDiscover(#[from] Box<gix::discover::Error>),
+
+	///
+	#[error("gix::reference::find::existing error: {0}")]
+	GixReferenceFindExisting(
+		#[from] gix::reference::find::existing::Error,
+	),
+
+	///
+	#[error("gix::head::peel::to_commit error: {0}")]
+	GixHeadPeelToCommit(#[from] gix::head::peel::to_commit::Error),
+
+	///
+	#[error("gix::revision::walk error: {0}")]
+	GixRevisionWalk(#[from] gix::revision::walk::Error),
+
+	///
+	#[error("amend error: config commit.gpgsign=true detected.\ngpg signing is not supported for amending non-last commits")]
+	SignAmendNonLastCommit,
+
+	///
+	#[error("reword error: config commit.gpgsign=true detected.\ngpg signing is not supported for rewording non-last commits")]
+	SignRewordNonLastCommit,
+
+	///
+	#[error("reword error: config commit.gpgsign=true detected.\ngpg signing is not supported for rewording commits with staged changes\ntry unstaging or stashing your changes")]
+	SignRewordLastCommitStaged,
 }
 
 ///
@@ -98,5 +136,11 @@ impl<T> From<std::sync::PoisonError<T>> for Error {
 impl<T> From<crossbeam_channel::SendError<T>> for Error {
 	fn from(error: crossbeam_channel::SendError<T>) -> Self {
 		Self::Generic(format!("send error: {error}"))
+	}
+}
+
+impl From<gix::discover::Error> for Error {
+	fn from(error: gix::discover::Error) -> Self {
+		Self::GixDiscover(Box::new(error))
 	}
 }

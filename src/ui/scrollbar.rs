@@ -1,7 +1,6 @@
 use super::style::SharedTheme;
 use easy_cast::CastFloat;
 use ratatui::{
-	backend::Backend,
 	buffer::Buffer,
 	layout::{Margin, Rect},
 	style::Style,
@@ -12,7 +11,6 @@ use ratatui::{
 	widgets::Widget,
 	Frame,
 };
-use std::convert::TryFrom;
 
 pub enum Orientation {
 	Vertical,
@@ -54,7 +52,7 @@ impl Scrollbar {
 		};
 
 		let (bar_top, bar_height) = {
-			let scrollbar_area = area.inner(&Margin {
+			let scrollbar_area = area.inner(Margin {
 				horizontal: 0,
 				vertical: 1,
 			});
@@ -91,7 +89,7 @@ impl Scrollbar {
 		};
 
 		let (bar_left, bar_width) = {
-			let scrollbar_area = area.inner(&Margin {
+			let scrollbar_area = area.inner(Margin {
 				horizontal: 1,
 				vertical: 0,
 			});
@@ -130,8 +128,8 @@ impl Widget for Scrollbar {
 	}
 }
 
-pub fn draw_scrollbar<B: Backend>(
-	f: &mut Frame<B>,
+pub fn draw_scrollbar(
+	f: &mut Frame,
 	r: Rect,
 	theme: &SharedTheme,
 	max: usize,

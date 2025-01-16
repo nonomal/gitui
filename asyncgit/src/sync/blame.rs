@@ -40,7 +40,7 @@ pub struct FileBlame {
 	pub lines: Vec<(Option<BlameHunk>, String)>,
 }
 
-/// fixup `\` windows path seperators to git compatible `/`
+/// fixup `\` windows path separators to git compatible `/`
 fn fixup_windows_path(path: &str) -> String {
 	#[cfg(windows)]
 	{
@@ -69,11 +69,8 @@ pub fn blame_file(
 		utils::get_head_repo(&repo)?
 	};
 
-	let spec = format!(
-		"{}:{}",
-		commit_id.to_string(),
-		fixup_windows_path(file_path)
-	);
+	let spec =
+		format!("{}:{}", commit_id, fixup_windows_path(file_path));
 
 	let object = repo.revparse_single(&spec)?;
 	let blob = repo.find_blob(object.id())?;
@@ -170,7 +167,7 @@ mod tests {
 		let repo_path: &RepoPath =
 			&root.as_os_str().to_str().unwrap().into();
 
-		assert!(matches!(blame_file(repo_path, "foo", None), Err(_)));
+		assert!(blame_file(repo_path, "foo", None).is_err());
 
 		File::create(root.join(file_path))?.write_all(b"line 1\n")?;
 

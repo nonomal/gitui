@@ -17,13 +17,11 @@ use asyncgit::sync::{
 };
 use crossterm::event::Event;
 use ratatui::{
-	backend::Backend,
 	layout::{Constraint, Direction, Layout, Rect},
 	style::{Modifier, Style},
 	text::{Line, Span, Text},
 	Frame,
 };
-use std::clone::Clone;
 use std::{borrow::Cow, cell::Cell};
 use sync::CommitTags;
 
@@ -104,11 +102,11 @@ impl DetailsComponent {
 	}
 
 	fn get_wrapped_lines(
-		data: &Option<CommitDetails>,
+		data: Option<&CommitDetails>,
 		width: usize,
 	) -> WrappedCommitMessage<'_> {
-		if let Some(ref data) = data {
-			if let Some(ref message) = data.message {
+		if let Some(data) = data {
+			if let Some(message) = &data.message {
 				return Self::wrap_commit_details(message, width);
 			}
 		}
@@ -117,7 +115,7 @@ impl DetailsComponent {
 	}
 
 	fn get_number_of_lines(
-		details: &Option<CommitDetails>,
+		details: Option<&CommitDetails>,
 		width: usize,
 	) -> usize {
 		let (wrapped_title, wrapped_message) =
@@ -140,7 +138,7 @@ impl DetailsComponent {
 		height: usize,
 	) -> Vec<Line> {
 		let (wrapped_title, wrapped_message) =
-			Self::get_wrapped_lines(&self.data, width);
+			Self::get_wrapped_lines(self.data.as_ref(), width);
 
 		[&wrapped_title[..], &wrapped_message[..]]
 			.concat()
@@ -186,7 +184,7 @@ impl DetailsComponent {
 			if let Some(ref committer) = data.committer {
 				res.extend(vec![
 					Line::from(vec![
-						style_detail(&self.theme, &Detail::Commiter),
+						style_detail(&self.theme, &Detail::Committer),
 						Span::styled(
 							Cow::from(format!(
 								"{} <{}>",
@@ -246,7 +244,7 @@ impl DetailsComponent {
 		})
 	}
 
-	fn move_scroll_top(&mut self, move_type: ScrollType) -> bool {
+	fn move_scroll_top(&self, move_type: ScrollType) -> bool {
 		if self.data.is_some() {
 			self.scroll.move_top(move_type)
 		} else {
@@ -256,11 +254,7 @@ impl DetailsComponent {
 }
 
 impl DrawableComponent for DetailsComponent {
-	fn draw<B: Backend>(
-		&self,
-		f: &mut Frame<B>,
-		rect: Rect,
-	) -> Result<()> {
+	fn draw(&self, f: &mut Frame, rect: Rect) -> Result<()> {
 		const CANSCROLL_STRING: &str = "[\u{2026}]";
 		const EMPTY_STRING: &str = "";
 
@@ -292,8 +286,10 @@ impl DrawableComponent for DetailsComponent {
 
 		self.current_width.set(width);
 
-		let number_of_lines =
-			Self::get_number_of_lines(&self.data, usize::from(width));
+		let number_of_lines = Self::get_number_of_lines(
+			self.data.as_ref(),
+			usize::from(width),
+		);
 
 		self.scroll.update_no_selection(
 			number_of_lines,
@@ -346,7 +342,7 @@ impl Component for DetailsComponent {
 	) -> CommandBlocking {
 		let width = usize::from(self.current_width.get());
 		let number_of_lines =
-			Self::get_number_of_lines(&self.data, width);
+			Self::get_number_of_lines(self.data.as_ref(), width);
 
 		out.push(
 			CommandInfo::new(
@@ -494,13 +490,15 @@ mod test_line_count {
 			..CommitDetails::default()
 		};
 		let lines = DetailsComponent::get_number_of_lines(
-			&Some(commit.clone()),
+			Some(commit.clone()).as_ref(),
 			50,
 		);
 		assert_eq!(lines, 2);
 
-		let lines =
-			DetailsComponent::get_number_of_lines(&Some(commit), 8);
+		let lines = DetailsComponent::get_number_of_lines(
+			Some(commit).as_ref(),
+			8,
+		);
 		assert_eq!(lines, 4);
 	}
 }

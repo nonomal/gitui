@@ -22,7 +22,8 @@
 #![allow(
 	clippy::module_name_repetitions,
 	clippy::must_use_candidate,
-	clippy::missing_errors_doc
+	clippy::missing_errors_doc,
+	clippy::empty_docs
 )]
 //TODO:
 #![allow(
@@ -128,10 +129,10 @@ pub fn hash<T: Hash + ?Sized>(v: &T) -> u64 {
 ///
 #[cfg(feature = "trace-libgit")]
 pub fn register_tracing_logging() -> bool {
-	fn git_trace(level: git2::TraceLevel, msg: &str) {
-		log::info!("[{:?}]: {}", level, msg);
+	fn git_trace(level: git2::TraceLevel, msg: &[u8]) {
+		log::info!("[{:?}]: {}", level, String::from_utf8_lossy(msg));
 	}
-	git2::trace_set(git2::TraceLevel::Trace, git_trace)
+	git2::trace_set(git2::TraceLevel::Trace, git_trace).is_ok()
 }
 
 ///

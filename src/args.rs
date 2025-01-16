@@ -2,7 +2,7 @@ use crate::bug_report;
 use anyhow::{anyhow, Result};
 use asyncgit::sync::RepoPath;
 use clap::{
-	crate_authors, crate_description, crate_name, crate_version, Arg,
+	crate_authors, crate_description, crate_name, Arg,
 	Command as ClapApp,
 };
 use simplelog::{Config, LevelFilter, WriteLogger};
@@ -48,11 +48,7 @@ pub fn process_cmdline() -> Result<CliArgs> {
 		.get_one::<String>("theme")
 		.map_or_else(|| PathBuf::from("theme.ron"), PathBuf::from);
 
-	let theme = if get_app_config_path()?.join(&arg_theme).is_file() {
-		get_app_config_path()?.join(arg_theme)
-	} else {
-		get_app_config_path()?.join("theme.ron")
-	};
+	let theme = get_app_config_path()?.join(arg_theme);
 
 	let notify_watcher: bool =
 		*arg_matches.get_one("watcher").unwrap_or(&false);
@@ -67,7 +63,7 @@ pub fn process_cmdline() -> Result<CliArgs> {
 fn app() -> ClapApp {
 	ClapApp::new(crate_name!())
 		.author(crate_authors!())
-		.version(crate_version!())
+		.version(env!("GITUI_BUILD_NAME"))
 		.about(crate_description!())
 		.help_template(
 			"\
@@ -82,10 +78,11 @@ fn app() -> ClapApp {
 		)
 		.arg(
 			Arg::new("theme")
-				.help("Set the color theme (defaults to theme.ron)")
+				.help("Set color theme filename loaded from config directory")
 				.short('t')
 				.long("theme")
-				.value_name("THEME")
+				.value_name("THEME_FILE")
+				.default_value("theme.ron")
 				.num_args(1),
 		)
 		.arg(

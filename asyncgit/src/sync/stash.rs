@@ -144,12 +144,9 @@ mod tests {
 		let repo_path: &RepoPath =
 			&root.as_os_str().to_str().unwrap().into();
 
-		assert_eq!(
-			stash_save(repo_path, None, true, false).is_ok(),
-			false
-		);
+		assert!(!stash_save(repo_path, None, true, false).is_ok());
 
-		assert_eq!(get_stashes(repo_path).unwrap().is_empty(), true);
+		assert!(get_stashes(repo_path).unwrap().is_empty());
 	}
 
 	#[test]
@@ -213,7 +210,7 @@ mod tests {
 	}
 
 	#[test]
-	fn test_stash_without_2nd_parent() -> Result<()> {
+	fn test_stash_without_second_parent() -> Result<()> {
 		let file_path1 = Path::new("file1.txt");
 		let (_td, repo) = repo_init()?;
 		let root = repo.path().parent().unwrap();

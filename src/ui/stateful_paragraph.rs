@@ -1,7 +1,7 @@
 use easy_cast::Cast;
 use ratatui::{
 	buffer::Buffer,
-	layout::{Alignment, Rect},
+	layout::{Alignment, Position, Rect},
 	style::Style,
 	text::{StyledGrapheme, Text},
 	widgets::{Block, StatefulWidget, Widget, Wrap},
@@ -89,7 +89,6 @@ impl<'a> StatefulParagraph<'a> {
 		}
 	}
 
-	#[allow(clippy::missing_const_for_fn)]
 	pub fn block(mut self, block: Block<'a>) -> Self {
 		self.block = Some(block);
 		self
@@ -99,19 +98,9 @@ impl<'a> StatefulParagraph<'a> {
 		self.wrap = Some(wrap);
 		self
 	}
-
-	// pub const fn style(mut self, style: Style) -> Self {
-	// 	self.style = style;
-	// 	self
-	// }
-
-	// pub const fn alignment(mut self, alignment: Alignment) -> Self {
-	// 	self.alignment = alignment;
-	// 	self
-	// }
 }
 
-impl<'a> StatefulWidget for StatefulParagraph<'a> {
+impl StatefulWidget for StatefulParagraph<'_> {
 	type State = ParagraphState;
 
 	fn render(
@@ -174,18 +163,20 @@ impl<'a> StatefulWidget for StatefulParagraph<'a> {
 					self.alignment,
 				);
 				for StyledGrapheme { symbol, style } in current_line {
-					buf.get_mut(
+					buf.cell_mut(Position::new(
 						text_area.left() + x,
 						text_area.top() + y - state.scroll.y,
-					)
-					.set_symbol(if symbol.is_empty() {
-						// If the symbol is empty, the last char which rendered last time will
-						// leave on the line. It's a quick fix.
-						" "
-					} else {
-						symbol
-					})
-					.set_style(*style);
+					))
+					.map(|cell| {
+						cell.set_symbol(if symbol.is_empty() {
+							// If the symbol is empty, the last char which rendered last time will
+							// leave on the line. It's a quick fix.
+							" "
+						} else {
+							symbol
+						})
+						.set_style(*style)
+					});
 					x += Cast::<u16>::cast(symbol.width());
 				}
 			}

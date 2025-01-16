@@ -23,13 +23,12 @@ use crossterm::event::Event;
 use filetreelist::MoveSelection;
 use itertools::Either;
 use ratatui::{
-	backend::Backend,
 	layout::Rect,
 	text::Text,
 	widgets::{Block, Borders, Wrap},
 	Frame,
 };
-use std::{cell::Cell, convert::From, path::Path};
+use std::{cell::Cell, path::Path};
 
 pub struct SyntaxTextComponent {
 	repo: RepoPathRef,
@@ -105,11 +104,10 @@ impl SyntaxTextComponent {
 		let already_loaded = self
 			.current_file
 			.as_ref()
-			.map(|(current_file, _)| current_file == &path)
-			.unwrap_or_default();
+			.is_some_and(|(current_file, _)| current_file == &path);
 
 		if !already_loaded {
-			//TODO: fetch file content async aswell
+			//TODO: fetch file content async as well
 			match sync::tree_file_content(&self.repo.borrow(), item) {
 				Ok(content) => {
 					let content = tabs_to_spaces(content);
@@ -185,11 +183,7 @@ impl SyntaxTextComponent {
 }
 
 impl DrawableComponent for SyntaxTextComponent {
-	fn draw<B: Backend>(
-		&self,
-		f: &mut Frame<B>,
-		area: Rect,
-	) -> Result<()> {
+	fn draw(&self, f: &mut Frame, area: Rect) -> Result<()> {
 		let text = self.current_file.as_ref().map_or_else(
 			|| Text::from(""),
 			|(_, content)| match content {

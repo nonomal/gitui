@@ -3,22 +3,22 @@ use super::{
 		filetree::{FileTreeItem, FileTreeItemKind},
 		statustree::{MoveSelection, StatusTree},
 	},
-	BlameFileOpen, CommandBlocking, DrawableComponent, FileRevOpen,
+	CommandBlocking, DrawableComponent,
 };
 use crate::{
 	app::Environment,
 	components::{CommandInfo, Component, EventState},
 	keys::{key_match, SharedKeyConfig},
+	popups::{BlameFileOpen, FileRevOpen},
 	queue::{InternalEvent, NeedsUpdate, Queue, StackablePopupOpen},
 	strings::{self, order},
-	ui,
-	ui::style::SharedTheme,
+	ui::{self, style::SharedTheme},
 };
 use anyhow::Result;
 use asyncgit::{hash, sync::CommitId, StatusItem, StatusItemType};
 use crossterm::event::Event;
-use ratatui::{backend::Backend, layout::Rect, text::Span, Frame};
-use std::{borrow::Cow, cell::Cell, convert::From, path::Path};
+use ratatui::{layout::Rect, text::Span, Frame};
+use std::{borrow::Cow, cell::Cell, path::Path};
 
 //TODO: use new `filetreelist` crate
 
@@ -119,8 +119,8 @@ impl StatusTreeComponent {
 	}
 
 	///
-	pub fn is_file_seleted(&self) -> bool {
-		self.tree.selected_item().map_or(false, |item| {
+	pub fn is_file_selected(&self) -> bool {
+		self.tree.selected_item().is_some_and(|item| {
 			match item.kind {
 				FileTreeItemKind::File(_) => true,
 				FileTreeItemKind::Path(..) => false,
@@ -319,11 +319,7 @@ struct TextDrawInfo<'a> {
 }
 
 impl DrawableComponent for StatusTreeComponent {
-	fn draw<B: Backend>(
-		&self,
-		f: &mut Frame<B>,
-		r: Rect,
-	) -> Result<()> {
+	fn draw(&self, f: &mut Frame, r: Rect) -> Result<()> {
 		if !self.is_visible() {
 			return Ok(());
 		}
@@ -554,7 +550,6 @@ impl Component for StatusTreeComponent {
 #[cfg(test)]
 mod tests {
 	use super::*;
-	use asyncgit::StatusItemType;
 
 	fn string_vec_to_status(items: &[&str]) -> Vec<StatusItem> {
 		items

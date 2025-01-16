@@ -9,7 +9,7 @@ use struct_patch::Patch;
 pub type SharedTheme = Rc<Theme>;
 
 #[derive(Serialize, Deserialize, Debug, Clone, Patch)]
-#[patch_derive(Serialize, Deserialize)]
+#[patch(attribute(derive(Serialize, Deserialize)))]
 pub struct Theme {
 	selected_tab: Color,
 	command_fg: Color,
@@ -33,6 +33,7 @@ pub struct Theme {
 	tag_fg: Color,
 	branch_fg: Color,
 	line_break: String,
+	block_title_focused: Color,
 }
 
 impl Theme {
@@ -50,7 +51,9 @@ impl Theme {
 
 	pub fn title(&self, focused: bool) -> Style {
 		if focused {
-			Style::default().add_modifier(Modifier::BOLD)
+			Style::default()
+				.fg(self.block_title_focused)
+				.add_modifier(Modifier::BOLD)
 		} else {
 			Style::default().fg(self.disabled_fg)
 		}
@@ -140,7 +143,11 @@ impl Theme {
 		self.apply_select(style, selected)
 	}
 
-	fn apply_select(&self, style: Style, selected: bool) -> Style {
+	const fn apply_select(
+		&self,
+		style: Style,
+		selected: bool,
+	) -> Style {
 		if selected {
 			style.bg(self.selection_bg).fg(self.selection_fg)
 		} else {
@@ -294,7 +301,10 @@ impl Theme {
 	pub fn init(theme_path: &PathBuf) -> Self {
 		let mut theme = Self::default();
 
-		if let Ok(patch) = Self::load_patch(theme_path) {
+		if let Ok(patch) = Self::load_patch(theme_path).map_err(|e| {
+			log::error!("theme error [{:?}]: {e}", theme_path);
+			e
+		}) {
 			theme.apply(patch);
 		} else if let Ok(old_theme) = Self::load_old_theme(theme_path)
 		{
@@ -342,6 +352,7 @@ impl Default for Theme {
 			tag_fg: Color::LightMagenta,
 			branch_fg: Color::LightYellow,
 			line_break: "¶".to_string(),
+			block_title_focused: Color::Reset,
 		}
 	}
 }
@@ -350,27 +361,34 @@ impl Default for Theme {
 mod tests {
 	use super::*;
 	use pretty_assertions::assert_eq;
-	use std::io::Write;
 	use tempfile::NamedTempFile;
 
 	#[test]
 	fn test_smoke() {
+		let _ = env_logger::builder()
+			.is_test(true)
+			.filter_level(log::LevelFilter::Trace)
+			.try_init();
+
 		let mut file = NamedTempFile::new().unwrap();
 
 		writeln!(
 			file,
-			r"
+			r##"
 (
-	selection_bg: Some(White),
+	selection_bg: Some("Black"),
+	selection_fg: Some("#ffffff"),
 )
-"
+"##
 		)
 		.unwrap();
 
 		let theme = Theme::init(&file.path().to_path_buf());
 
-		assert_eq!(theme.selection_fg, Theme::default().selection_fg);
-		assert_eq!(theme.selection_bg, Color::White);
+		assert_eq!(theme.selected_tab, Theme::default().selected_tab);
+
 		assert_ne!(theme.selection_bg, Theme::default().selection_bg);
+		assert_eq!(theme.selection_bg, Color::Black);
+		assert_eq!(theme.selection_fg, Color::Rgb(255, 255, 255));
 	}
 }

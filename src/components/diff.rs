@@ -23,7 +23,6 @@ use asyncgit::{
 use bytesize::ByteSize;
 use crossterm::event::Event;
 use ratatui::{
-	backend::Backend,
 	layout::Rect,
 	symbols,
 	text::{Line, Span},
@@ -146,10 +145,7 @@ impl DiffComponent {
 	}
 	///
 	fn can_scroll(&self) -> bool {
-		self.diff
-			.as_ref()
-			.map(|diff| diff.lines > 1)
-			.unwrap_or_default()
+		self.diff.as_ref().is_some_and(|diff| diff.lines > 1)
 	}
 	///
 	pub fn current(&self) -> (String, bool) {
@@ -343,9 +339,7 @@ impl DiffComponent {
 
 				for (i, hunk) in diff.hunks.iter().enumerate() {
 					let hunk_selected = self.focused()
-						&& self
-							.selected_hunk
-							.map_or(false, |s| s == i);
+						&& self.selected_hunk.is_some_and(|s| s == i);
 
 					if lines_added >= height as usize {
 						break;
@@ -500,7 +494,7 @@ impl DiffComponent {
 		false
 	}
 
-	fn unstage_hunk(&mut self) -> Result<()> {
+	fn unstage_hunk(&self) -> Result<()> {
 		if let Some(diff) = &self.diff {
 			if let Some(hunk) = self.selected_hunk {
 				let hash = diff.hunks[hunk].header_hash;
@@ -517,7 +511,7 @@ impl DiffComponent {
 		Ok(())
 	}
 
-	fn stage_hunk(&mut self) -> Result<()> {
+	fn stage_hunk(&self) -> Result<()> {
 		if let Some(diff) = &self.diff {
 			if let Some(hunk) = self.selected_hunk {
 				if diff.untracked {
@@ -572,7 +566,7 @@ impl DiffComponent {
 
 	fn stage_lines(&self) {
 		if let Some(diff) = &self.diff {
-			//TODO: support untracked files aswell
+			//TODO: support untracked files as well
 			if !diff.untracked {
 				let selected_lines = self.selected_lines();
 
@@ -621,12 +615,11 @@ impl DiffComponent {
 		self.queue.push(InternalEvent::ConfirmAction(Action::Reset(
 			ResetItem {
 				path: self.current.path.clone(),
-				is_folder: false,
 			},
 		)));
 	}
 
-	fn stage_unstage_hunk(&mut self) -> Result<()> {
+	fn stage_unstage_hunk(&self) -> Result<()> {
 		if self.current.is_stage {
 			self.unstage_hunk()?;
 		} else {
@@ -686,11 +679,7 @@ impl DiffComponent {
 }
 
 impl DrawableComponent for DiffComponent {
-	fn draw<B: Backend>(
-		&self,
-		f: &mut Frame<B>,
-		r: Rect,
-	) -> Result<()> {
+	fn draw(&self, f: &mut Frame, r: Rect) -> Result<()> {
 		self.current_size.set((
 			r.width.saturating_sub(2),
 			r.height.saturating_sub(2),

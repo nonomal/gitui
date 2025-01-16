@@ -20,8 +20,6 @@ pub struct Tag {
 
 impl Tag {
 	///
-	#[allow(clippy::missing_const_for_fn)]
-	// clippy doesn't realise allocating a String is not const
 	pub fn new(name: &str) -> Self {
 		Self {
 			name: name.into(),
@@ -202,7 +200,7 @@ mod tests {
 		let repo_path: &RepoPath =
 			&root.as_os_str().to_str().unwrap().into();
 
-		assert_eq!(get_tags(repo_path).unwrap().is_empty(), true);
+		assert!(get_tags(repo_path).unwrap().is_empty());
 	}
 
 	#[test]

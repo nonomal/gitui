@@ -17,7 +17,7 @@ use asyncgit::{
 	StatusItem, StatusItemType,
 };
 use crossterm::event::Event;
-use ratatui::{backend::Backend, layout::Rect, Frame};
+use ratatui::{layout::Rect, Frame};
 use std::path::Path;
 
 ///
@@ -72,11 +72,11 @@ impl ChangesComponent {
 	}
 
 	///
-	pub fn is_file_seleted(&self) -> bool {
-		self.files.is_file_seleted()
+	pub fn is_file_selected(&self) -> bool {
+		self.files.is_file_selected()
 	}
 
-	fn index_add_remove(&mut self) -> Result<bool> {
+	fn index_add_remove(&self) -> Result<bool> {
 		if let Some(tree_item) = self.selection() {
 			if self.is_working_dir {
 				if let FileTreeItemKind::File(i) = tree_item.kind {
@@ -97,7 +97,7 @@ impl ChangesComponent {
 					let config =
 						self.options.borrow().status_show_untracked();
 
-					//TODO: check if we can handle the one file case with it aswell
+					//TODO: check if we can handle the one file case with it as well
 					sync::stage_add_all(
 						&self.repo.borrow(),
 						tree_item.info.full_path.as_str(),
@@ -128,7 +128,7 @@ impl ChangesComponent {
 		Ok(false)
 	}
 
-	fn index_add_all(&mut self) -> Result<()> {
+	fn index_add_all(&self) -> Result<()> {
 		let config = self.options.borrow().status_show_untracked();
 
 		sync::stage_add_all(&self.repo.borrow(), "*", config)?;
@@ -138,7 +138,7 @@ impl ChangesComponent {
 		Ok(())
 	}
 
-	fn stage_remove_all(&mut self) -> Result<()> {
+	fn stage_remove_all(&self) -> Result<()> {
 		sync::reset_stage(&self.repo.borrow(), "*")?;
 
 		self.queue.push(InternalEvent::Update(NeedsUpdate::ALL));
@@ -146,14 +146,11 @@ impl ChangesComponent {
 		Ok(())
 	}
 
-	fn dispatch_reset_workdir(&mut self) -> bool {
+	fn dispatch_reset_workdir(&self) -> bool {
 		if let Some(tree_item) = self.selection() {
-			let is_folder =
-				matches!(tree_item.kind, FileTreeItemKind::Path(_));
 			self.queue.push(InternalEvent::ConfirmAction(
 				Action::Reset(ResetItem {
 					path: tree_item.info.full_path,
-					is_folder,
 				}),
 			));
 
@@ -162,7 +159,7 @@ impl ChangesComponent {
 		false
 	}
 
-	fn add_to_ignore(&mut self) -> bool {
+	fn add_to_ignore(&self) -> bool {
 		if let Some(tree_item) = self.selection() {
 			if let Err(e) = sync::add_to_ignore(
 				&self.repo.borrow(),
@@ -187,11 +184,7 @@ impl ChangesComponent {
 }
 
 impl DrawableComponent for ChangesComponent {
-	fn draw<B: Backend>(
-		&self,
-		f: &mut Frame<B>,
-		r: Rect,
-	) -> Result<()> {
+	fn draw(&self, f: &mut Frame, r: Rect) -> Result<()> {
 		self.files.draw(f, r)?;
 
 		Ok(())

@@ -19,10 +19,9 @@
 #![allow(
 	clippy::multiple_crate_versions,
 	clippy::bool_to_int_with_if,
-	clippy::module_name_repetitions
+	clippy::module_name_repetitions,
+	clippy::empty_docs
 )]
-// high number of false positives on nightly (as of Oct 2022 with 1.66.0-nightly)
-#![allow(clippy::missing_const_for_fn)]
 
 //TODO:
 // #![deny(clippy::expect_used)]
@@ -38,13 +37,13 @@ mod keys;
 mod notify_mutex;
 mod options;
 mod popup_stack;
+mod popups;
 mod queue;
 mod spinner;
 mod string_utils;
 mod strings;
 mod tabs;
 mod ui;
-mod version;
 mod watcher;
 
 use crate::{app::App, args::process_cmdline};
@@ -65,21 +64,20 @@ use crossterm::{
 };
 use input::{Input, InputEvent, InputState};
 use keys::KeyConfig;
-use ratatui::{
-	backend::{Backend, CrosstermBackend},
-	Terminal,
-};
+use ratatui::backend::CrosstermBackend;
 use scopeguard::defer;
 use scopetime::scope_time;
 use spinner::Spinner;
 use std::{
 	cell::RefCell,
-	io::{self, Write},
+	io::{self, Stdout},
 	panic, process,
 	time::{Duration, Instant},
 };
 use ui::style::Theme;
 use watcher::RepoWatcher;
+
+type Terminal = ratatui::Terminal<CrosstermBackend<io::Stdout>>;
 
 static TICK_INTERVAL: Duration = Duration::from_secs(5);
 static SPINNER_INTERVAL: Duration = Duration::from_millis(80);
@@ -128,7 +126,8 @@ fn main() -> Result<()> {
 	asyncgit::register_tracing_logging();
 
 	if !valid_path(&cliargs.repo_path) {
-		bail!("invalid path\nplease run gitui inside of a non-bare git repository");
+		eprintln!("invalid path\nplease run gitui inside of a non-bare git repository");
+		return Ok(());
 	}
 
 	let key_config = KeyConfig::init()
@@ -182,7 +181,7 @@ fn run_app(
 	key_config: KeyConfig,
 	input: &Input,
 	updater: Updater,
-	terminal: &mut Terminal<CrosstermBackend<io::Stdout>>,
+	terminal: &mut Terminal,
 ) -> Result<QuitState, anyhow::Error> {
 	let (tx_git, rx_git) = unbounded();
 	let (tx_app, rx_app) = unbounded();
@@ -301,12 +300,9 @@ fn shutdown_terminal() {
 	}
 }
 
-fn draw<B: Backend>(
-	terminal: &mut Terminal<B>,
-	app: &App,
-) -> io::Result<()> {
+fn draw(terminal: &mut Terminal, app: &App) -> io::Result<()> {
 	if app.requires_redraw() {
-		terminal.resize(terminal.size()?)?;
+		terminal.clear()?;
 	}
 
 	terminal.draw(|f| {
@@ -321,7 +317,7 @@ fn draw<B: Backend>(
 fn valid_path(repo_path: &RepoPath) -> bool {
 	let error = asyncgit::sync::repo_open_error(repo_path);
 	if let Some(error) = &error {
-		eprintln!("repo open error: {error}");
+		log::error!("repo open error: {error}");
 	}
 	error.is_none()
 }
@@ -363,9 +359,7 @@ fn select_event(
 	Ok(ev)
 }
 
-fn start_terminal<W: Write>(
-	buf: W,
-) -> io::Result<Terminal<CrosstermBackend<W>>> {
+fn start_terminal(buf: Stdout) -> io::Result<Terminal> {
 	let backend = CrosstermBackend::new(buf);
 	let mut terminal = Terminal::new(backend)?;
 	terminal.hide_cursor()?;
@@ -374,7 +368,7 @@ fn start_terminal<W: Write>(
 	Ok(terminal)
 }
 
-// do log::error! and eprintln! in one line, pass sting, error and backtrace
+// do log::error! and eprintln! in one line, pass string, error and backtrace
 macro_rules! log_eprintln {
 	($string:expr, $e:expr, $bt:expr) => {
 		log::error!($string, $e, $bt);
@@ -386,16 +380,16 @@ fn set_panic_handlers() -> Result<()> {
 	// regular panic handler
 	panic::set_hook(Box::new(|e| {
 		let backtrace = Backtrace::new();
-		log_eprintln!("panic: {:?}\ntrace:\n{:?}", e, backtrace);
 		shutdown_terminal();
+		log_eprintln!("\nGitUI was close due to an unexpected panic.\nPlease file an issue on https://github.com/extrawurst/gitui/issues with the following info:\n\n{:?}\ntrace:\n{:?}", e, backtrace);
 	}));
 
 	// global threadpool
 	rayon_core::ThreadPoolBuilder::new()
 		.panic_handler(|e| {
 			let backtrace = Backtrace::new();
-			log_eprintln!("panic: {:?}\ntrace:\n{:?}", e, backtrace);
 			shutdown_terminal();
+			log_eprintln!("\nGitUI was close due to an unexpected panic.\nPlease file an issue on https://github.com/extrawurst/gitui/issues with the following info:\n\n{:?}\ntrace:\n{:?}", e, backtrace);
 			process::abort();
 		})
 		.num_threads(4)

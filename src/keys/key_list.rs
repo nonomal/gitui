@@ -35,7 +35,7 @@ impl From<&GituiKeyEvent> for KeyEvent {
 }
 
 #[derive(Debug, Clone, Patch)]
-#[patch_derive(Deserialize, Debug)]
+#[patch(attribute(derive(Deserialize, Debug)))]
 pub struct KeysList {
 	pub tab_status: GituiKeyEvent,
 	pub tab_log: GituiKeyEvent,
@@ -85,8 +85,8 @@ pub struct KeysList {
 	pub log_tag_commit: GituiKeyEvent,
 	pub log_mark_commit: GituiKeyEvent,
 	pub log_checkout_commit: GituiKeyEvent,
-	pub log_reset_comit: GituiKeyEvent,
-	pub log_reword_comit: GituiKeyEvent,
+	pub log_reset_commit: GituiKeyEvent,
+	pub log_reword_commit: GituiKeyEvent,
 	pub log_find: GituiKeyEvent,
 	pub find_commit_sha: GituiKeyEvent,
 	pub commit_amend: GituiKeyEvent,
@@ -99,6 +99,7 @@ pub struct KeysList {
 	pub delete_branch: GituiKeyEvent,
 	pub merge_branch: GituiKeyEvent,
 	pub rebase_branch: GituiKeyEvent,
+	pub reset_branch: GituiKeyEvent,
 	pub compare_commits: GituiKeyEvent,
 	pub tags: GituiKeyEvent,
 	pub delete_tag: GituiKeyEvent,
@@ -117,9 +118,16 @@ pub struct KeysList {
 	pub stage_unstage_item: GituiKeyEvent,
 	pub tag_annotate: GituiKeyEvent,
 	pub view_submodules: GituiKeyEvent,
+	pub view_remotes: GituiKeyEvent,
+	pub update_remote_name: GituiKeyEvent,
+	pub update_remote_url: GituiKeyEvent,
+	pub add_remote: GituiKeyEvent,
+	pub delete_remote: GituiKeyEvent,
 	pub view_submodule_parent: GituiKeyEvent,
 	pub update_submodule: GituiKeyEvent,
 	pub commit_history_next: GituiKeyEvent,
+	pub commit: GituiKeyEvent,
+	pub newline: GituiKeyEvent,
 }
 
 #[rustfmt::skip]
@@ -174,8 +182,8 @@ impl Default for KeysList {
 			log_tag_commit: GituiKeyEvent::new(KeyCode::Char('t'),  KeyModifiers::empty()),
 			log_mark_commit: GituiKeyEvent::new(KeyCode::Char(' '),  KeyModifiers::empty()),
 			log_checkout_commit: GituiKeyEvent { code: KeyCode::Char('S'), modifiers: KeyModifiers::SHIFT },
-			log_reset_comit: GituiKeyEvent { code: KeyCode::Char('R'), modifiers: KeyModifiers::SHIFT },
-			log_reword_comit: GituiKeyEvent { code: KeyCode::Char('r'), modifiers: KeyModifiers::empty() },
+			log_reset_commit: GituiKeyEvent { code: KeyCode::Char('R'), modifiers: KeyModifiers::SHIFT },
+			log_reword_commit: GituiKeyEvent { code: KeyCode::Char('r'), modifiers: KeyModifiers::empty() },
 			log_find: GituiKeyEvent { code: KeyCode::Char('f'), modifiers: KeyModifiers::empty() },
 			find_commit_sha: GituiKeyEvent::new(KeyCode::Char('j'), KeyModifiers::CONTROL),
 			commit_amend: GituiKeyEvent::new(KeyCode::Char('a'),  KeyModifiers::CONTROL),
@@ -188,6 +196,7 @@ impl Default for KeysList {
 			delete_branch: GituiKeyEvent::new(KeyCode::Char('D'),  KeyModifiers::SHIFT),
 			merge_branch: GituiKeyEvent::new(KeyCode::Char('m'),  KeyModifiers::empty()),
 			rebase_branch: GituiKeyEvent::new(KeyCode::Char('R'),  KeyModifiers::SHIFT),
+			reset_branch: GituiKeyEvent::new(KeyCode::Char('s'),  KeyModifiers::empty()),
 			compare_commits: GituiKeyEvent::new(KeyCode::Char('C'),  KeyModifiers::SHIFT),
 			tags: GituiKeyEvent::new(KeyCode::Char('T'),  KeyModifiers::SHIFT),
 			delete_tag: GituiKeyEvent::new(KeyCode::Char('D'),  KeyModifiers::SHIFT),
@@ -206,9 +215,16 @@ impl Default for KeysList {
 			stage_unstage_item: GituiKeyEvent::new(KeyCode::Enter,  KeyModifiers::empty()),
 			tag_annotate: GituiKeyEvent::new(KeyCode::Char('a'),  KeyModifiers::CONTROL),
 			view_submodules: GituiKeyEvent::new(KeyCode::Char('S'),  KeyModifiers::SHIFT),
+			view_remotes: GituiKeyEvent::new(KeyCode::Char('r'), KeyModifiers::CONTROL),
+			update_remote_name: GituiKeyEvent::new(KeyCode::Char('n'),KeyModifiers::NONE),
+			update_remote_url: GituiKeyEvent::new(KeyCode::Char('u'),KeyModifiers::NONE),
+			add_remote: GituiKeyEvent::new(KeyCode::Char('a'), KeyModifiers::NONE),
+			delete_remote: GituiKeyEvent::new(KeyCode::Char('r'), KeyModifiers::NONE),
 			view_submodule_parent: GituiKeyEvent::new(KeyCode::Char('p'),  KeyModifiers::empty()),
 			update_submodule: GituiKeyEvent::new(KeyCode::Char('u'),  KeyModifiers::empty()),
 			commit_history_next: GituiKeyEvent::new(KeyCode::Char('n'),  KeyModifiers::CONTROL),
+			commit: GituiKeyEvent::new(KeyCode::Char('d'),  KeyModifiers::CONTROL),
+			newline: GituiKeyEvent::new(KeyCode::Enter,  KeyModifiers::empty()),
 		}
 	}
 }

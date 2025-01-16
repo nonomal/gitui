@@ -27,8 +27,8 @@ impl<'a, 'b> WordWrapper<'a, 'b> {
 		symbols: &'b mut dyn Iterator<Item = StyledGrapheme<'a>>,
 		max_line_width: u16,
 		trim: bool,
-	) -> WordWrapper<'a, 'b> {
-		WordWrapper {
+	) -> Self {
+		Self {
 			symbols,
 			max_line_width,
 			current_line: vec![],
@@ -38,7 +38,7 @@ impl<'a, 'b> WordWrapper<'a, 'b> {
 	}
 }
 
-impl<'a, 'b> LineComposer<'a> for WordWrapper<'a, 'b> {
+impl<'a> LineComposer<'a> for WordWrapper<'a, '_> {
 	fn next_line(&mut self) -> Option<(&[StyledGrapheme<'a>], u16)> {
 		if self.max_line_width == 0 {
 			return None;
@@ -144,7 +144,7 @@ pub struct LineTruncator<'a, 'b> {
 	symbols: &'b mut dyn Iterator<Item = StyledGrapheme<'a>>,
 	max_line_width: u16,
 	current_line: Vec<StyledGrapheme<'a>>,
-	/// Record the offet to skip render
+	/// Record the offset to skip render
 	horizontal_offset: u16,
 }
 
@@ -152,8 +152,8 @@ impl<'a, 'b> LineTruncator<'a, 'b> {
 	pub fn new(
 		symbols: &'b mut dyn Iterator<Item = StyledGrapheme<'a>>,
 		max_line_width: u16,
-	) -> LineTruncator<'a, 'b> {
-		LineTruncator {
+	) -> Self {
+		Self {
 			symbols,
 			max_line_width,
 			horizontal_offset: 0,
@@ -166,7 +166,7 @@ impl<'a, 'b> LineTruncator<'a, 'b> {
 	}
 }
 
-impl<'a, 'b> LineComposer<'a> for LineTruncator<'a, 'b> {
+impl<'a> LineComposer<'a> for LineTruncator<'a, '_> {
 	fn next_line(&mut self) -> Option<(&[StyledGrapheme<'a>], u16)> {
 		if self.max_line_width == 0 {
 			return None;
@@ -445,7 +445,7 @@ mod test {
 				"mnopab cdefghi j",
 				"klmno",
 			]
-		)
+		);
 	}
 
 	#[test]
@@ -509,7 +509,7 @@ mod test {
 		assert_eq!(line_truncator, vec!["                    "]);
 	}
 
-	/// Tests an input starting with a letter, folowed by spaces - some of the behaviour is
+	/// Tests an input starting with a letter, followed by spaces - some of the behaviour is
 	/// incidental.
 	#[test]
 	fn line_composer_char_plus_lots_of_spaces() {

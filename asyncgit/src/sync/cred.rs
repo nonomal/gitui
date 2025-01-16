@@ -1,7 +1,13 @@
 //! credentials git helper
 
 use super::{
-	remotes::get_default_remote_in_repo, repository::repo, RepoPath,
+	remotes::{
+		get_default_remote_for_fetch_in_repo,
+		get_default_remote_for_push_in_repo,
+		get_default_remote_in_repo,
+	},
+	repository::repo,
+	RepoPath,
 };
 use crate::error::{Error, Result};
 use git2::CredentialHelper;
@@ -43,6 +49,42 @@ pub fn need_username_password(repo_path: &RepoPath) -> Result<bool> {
 	Ok(is_http)
 }
 
+/// know if username and password are needed for this url
+/// TODO: Very similar to `need_username_password_for_fetch`. Can be refactored. See also
+/// `need_username_password`.
+pub fn need_username_password_for_fetch(
+	repo_path: &RepoPath,
+) -> Result<bool> {
+	let repo = repo(repo_path)?;
+	let remote = repo
+		.find_remote(&get_default_remote_for_fetch_in_repo(&repo)?)?;
+	let url = remote
+		.url()
+		.or_else(|| remote.url())
+		.ok_or(Error::UnknownRemote)?
+		.to_owned();
+	let is_http = url.starts_with("http");
+	Ok(is_http)
+}
+
+/// know if username and password are needed for this url
+/// TODO: Very similar to `need_username_password_for_fetch`. Can be refactored. See also
+/// `need_username_password`.
+pub fn need_username_password_for_push(
+	repo_path: &RepoPath,
+) -> Result<bool> {
+	let repo = repo(repo_path)?;
+	let remote = repo
+		.find_remote(&get_default_remote_for_push_in_repo(&repo)?)?;
+	let url = remote
+		.pushurl()
+		.or_else(|| remote.url())
+		.ok_or(Error::UnknownRemote)?
+		.to_owned();
+	let is_http = url.starts_with("http");
+	Ok(is_http)
+}
+
 /// extract username and password
 pub fn extract_username_password(
 	repo_path: &RepoPath,
@@ -50,6 +92,64 @@ pub fn extract_username_password(
 	let repo = repo(repo_path)?;
 	let url = repo
 		.find_remote(&get_default_remote_in_repo(&repo)?)?
+		.url()
+		.ok_or(Error::UnknownRemote)?
+		.to_owned();
+	let mut helper = CredentialHelper::new(&url);
+
+	//TODO: look at Cred::credential_helper,
+	//if the username is in the url we need to set it here,
+	//I dont think `config` will pick it up
+
+	if let Ok(config) = repo.config() {
+		helper.config(&config);
+	}
+
+	Ok(match helper.execute() {
+		Some((username, password)) => {
+			BasicAuthCredential::new(Some(username), Some(password))
+		}
+		None => extract_cred_from_url(&url),
+	})
+}
+
+/// extract username and password
+/// TODO: Very similar to `extract_username_password_for_fetch`. Can be refactored.
+pub fn extract_username_password_for_fetch(
+	repo_path: &RepoPath,
+) -> Result<BasicAuthCredential> {
+	let repo = repo(repo_path)?;
+	let url = repo
+		.find_remote(&get_default_remote_for_fetch_in_repo(&repo)?)?
+		.url()
+		.ok_or(Error::UnknownRemote)?
+		.to_owned();
+	let mut helper = CredentialHelper::new(&url);
+
+	//TODO: look at Cred::credential_helper,
+	//if the username is in the url we need to set it here,
+	//I dont think `config` will pick it up
+
+	if let Ok(config) = repo.config() {
+		helper.config(&config);
+	}
+
+	Ok(match helper.execute() {
+		Some((username, password)) => {
+			BasicAuthCredential::new(Some(username), Some(password))
+		}
+		None => extract_cred_from_url(&url),
+	})
+}
+
+/// extract username and password
+/// TODO: Very similar to `extract_username_password_for_fetch`. Can be refactored.
+pub fn extract_username_password_for_push(
+	repo_path: &RepoPath,
+) -> Result<BasicAuthCredential> {
+	let repo = repo(repo_path)?;
+	let url = repo
+		.find_remote(&get_default_remote_for_push_in_repo(&repo)?)?
 		.url()
 		.ok_or(Error::UnknownRemote)?
 		.to_owned();
@@ -103,38 +203,26 @@ mod tests {
 
 	#[test]
 	fn test_credential_complete() {
-		assert_eq!(
-			BasicAuthCredential::new(
-				Some("username".to_owned()),
-				Some("password".to_owned())
-			)
-			.is_complete(),
-			true
-		);
+		assert!(BasicAuthCredential::new(
+			Some("username".to_owned()),
+			Some("password".to_owned())
+		)
+		.is_complete());
 	}
 
 	#[test]
 	fn test_credential_not_complete() {
-		assert_eq!(
-			BasicAuthCredential::new(
-				None,
-				Some("password".to_owned())
-			)
-			.is_complete(),
-			false
-		);
-		assert_eq!(
-			BasicAuthCredential::new(
-				Some("username".to_owned()),
-				None
-			)
-			.is_complete(),
-			false
-		);
-		assert_eq!(
-			BasicAuthCredential::new(None, None).is_complete(),
-			false
-		);
+		assert!(!BasicAuthCredential::new(
+			None,
+			Some("password".to_owned())
+		)
+		.is_complete());
+		assert!(!BasicAuthCredential::new(
+			Some("username".to_owned()),
+			None
+		)
+		.is_complete());
+		assert!(!BasicAuthCredential::new(None, None).is_complete());
 	}
 
 	#[test]
@@ -175,7 +263,7 @@ mod tests {
 		repo.remote(DEFAULT_REMOTE_NAME, "http://user@github.com")
 			.unwrap();
 
-		assert_eq!(need_username_password(repo_path).unwrap(), true);
+		assert!(need_username_password(repo_path).unwrap());
 	}
 
 	#[test]
@@ -189,7 +277,7 @@ mod tests {
 		repo.remote(DEFAULT_REMOTE_NAME, "git@github.com:user/repo")
 			.unwrap();
 
-		assert_eq!(need_username_password(repo_path).unwrap(), false);
+		assert!(!need_username_password(repo_path).unwrap());
 	}
 
 	#[test]
@@ -208,7 +296,7 @@ mod tests {
 		)
 		.unwrap();
 
-		assert_eq!(need_username_password(repo_path).unwrap(), false);
+		assert!(!need_username_password(repo_path).unwrap());
 	}
 
 	#[test]

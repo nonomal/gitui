@@ -10,7 +10,7 @@ use crate::{
 use git2::BranchType;
 use scopetime::scope_time;
 
-/// trys merging current branch with its upstrema using rebase
+/// tries merging current branch with its upstream using rebase
 pub fn merge_upstream_rebase(
 	repo_path: &RepoPath,
 	branch_name: &str,
@@ -79,7 +79,7 @@ mod test {
 			git2::Time::new(0, 0),
 		);
 
-		assert_eq!(clone1.head_detached().unwrap(), false);
+		assert!(!clone1.head_detached().unwrap());
 
 		push_branch(
 			&clone1_dir.into(),
@@ -92,7 +92,7 @@ mod test {
 		)
 		.unwrap();
 
-		assert_eq!(clone1.head_detached().unwrap(), false);
+		assert!(!clone1.head_detached().unwrap());
 
 		// clone2
 
@@ -109,7 +109,7 @@ mod test {
 			git2::Time::new(1, 0),
 		);
 
-		assert_eq!(clone2.head_detached().unwrap(), false);
+		assert!(!clone2.head_detached().unwrap());
 
 		push_branch(
 			&clone2_dir.into(),
@@ -122,7 +122,7 @@ mod test {
 		)
 		.unwrap();
 
-		assert_eq!(clone2.head_detached().unwrap(), false);
+		assert!(!clone2.head_detached().unwrap());
 
 		// clone1
 
@@ -134,7 +134,7 @@ mod test {
 			git2::Time::new(2, 0),
 		);
 
-		assert_eq!(clone1.head_detached().unwrap(), false);
+		assert!(!clone1.head_detached().unwrap());
 
 		//lets fetch from origin
 		let bytes =
@@ -151,7 +151,7 @@ mod test {
 
 		// debug_cmd_print(clone1_dir, "git status");
 
-		assert_eq!(clone1.head_detached().unwrap(), false);
+		assert!(!clone1.head_detached().unwrap());
 
 		merge_upstream_rebase(&clone1_dir.into(), "master").unwrap();
 
@@ -171,7 +171,7 @@ mod test {
 			]
 		);
 
-		assert_eq!(clone1.head_detached().unwrap(), false);
+		assert!(!clone1.head_detached().unwrap());
 	}
 
 	#[test]
@@ -270,7 +270,7 @@ mod test {
 			]
 		);
 
-		assert_eq!(clone1.head_detached().unwrap(), false);
+		assert!(!clone1.head_detached().unwrap());
 	}
 
 	#[test]

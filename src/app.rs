@@ -2,23 +2,25 @@ use crate::{
 	accessors,
 	cmdbar::CommandBar,
 	components::{
-		command_pump, event_pump, AppOption, BlameFileComponent,
-		BranchListComponent, CommandInfo, CommitComponent,
-		CompareCommitsComponent, Component, ConfirmComponent,
-		CreateBranchComponent, DrawableComponent,
-		ExternalEditorComponent, FetchComponent, FileRevlogComponent,
-		FuzzyFindPopup, FuzzyFinderTarget, HelpComponent,
-		InspectCommitComponent, LogSearchPopupComponent,
-		MsgComponent, OptionsPopupComponent, PullComponent,
-		PushComponent, PushTagsComponent, RenameBranchComponent,
-		ResetPopupComponent, RevisionFilesPopup, StashMsgComponent,
-		SubmodulesListComponent, TagCommitComponent,
-		TagListComponent,
+		command_pump, event_pump, CommandInfo, Component,
+		DrawableComponent, FuzzyFinderTarget,
 	},
 	input::{Input, InputEvent, InputState},
 	keys::{key_match, KeyConfig, SharedKeyConfig},
 	options::{Options, SharedOptions},
 	popup_stack::PopupStack,
+	popups::{
+		AppOption, BlameFilePopup, BranchListPopup, CommitPopup,
+		CompareCommitsPopup, ConfirmPopup, CreateBranchPopup,
+		CreateRemotePopup, ExternalEditorPopup, FetchPopup,
+		FileRevlogPopup, FuzzyFindPopup, HelpPopup,
+		InspectCommitPopup, LogSearchPopupPopup, MsgPopup,
+		OptionsPopup, PullPopup, PushPopup, PushTagsPopup,
+		RemoteListPopup, RenameBranchPopup, RenameRemotePopup,
+		ResetPopup, RevisionFilesPopup, StashMsgPopup,
+		SubmodulesListPopup, TagCommitPopup, TagListPopup,
+		UpdateRemoteUrlPopup,
+	},
 	queue::{
 		Action, AppTabs, InternalEvent, NeedsUpdate, Queue,
 		StackablePopupOpen,
@@ -42,7 +44,6 @@ use asyncgit::{
 use crossbeam_channel::Sender;
 use crossterm::event::{Event, KeyEvent};
 use ratatui::{
-	backend::Backend,
 	layout::{
 		Alignment, Constraint, Direction, Layout, Margin, Rect,
 	},
@@ -68,31 +69,35 @@ pub enum QuitState {
 pub struct App {
 	repo: RepoPathRef,
 	do_quit: QuitState,
-	help: HelpComponent,
-	msg: MsgComponent,
-	reset: ConfirmComponent,
-	commit: CommitComponent,
-	blame_file_popup: BlameFileComponent,
-	file_revlog_popup: FileRevlogComponent,
-	stashmsg_popup: StashMsgComponent,
-	inspect_commit_popup: InspectCommitComponent,
-	compare_commits_popup: CompareCommitsComponent,
-	external_editor_popup: ExternalEditorComponent,
+	help_popup: HelpPopup,
+	msg_popup: MsgPopup,
+	confirm_popup: ConfirmPopup,
+	commit_popup: CommitPopup,
+	blame_file_popup: BlameFilePopup,
+	file_revlog_popup: FileRevlogPopup,
+	stashmsg_popup: StashMsgPopup,
+	inspect_commit_popup: InspectCommitPopup,
+	compare_commits_popup: CompareCommitsPopup,
+	external_editor_popup: ExternalEditorPopup,
 	revision_files_popup: RevisionFilesPopup,
 	fuzzy_find_popup: FuzzyFindPopup,
-	log_search_popup: LogSearchPopupComponent,
-	push_popup: PushComponent,
-	push_tags_popup: PushTagsComponent,
-	pull_popup: PullComponent,
-	fetch_popup: FetchComponent,
-	tag_commit_popup: TagCommitComponent,
-	create_branch_popup: CreateBranchComponent,
-	rename_branch_popup: RenameBranchComponent,
-	select_branch_popup: BranchListComponent,
-	options_popup: OptionsPopupComponent,
-	submodule_popup: SubmodulesListComponent,
-	tags_popup: TagListComponent,
-	reset_popup: ResetPopupComponent,
+	log_search_popup: LogSearchPopupPopup,
+	push_popup: PushPopup,
+	push_tags_popup: PushTagsPopup,
+	pull_popup: PullPopup,
+	fetch_popup: FetchPopup,
+	tag_commit_popup: TagCommitPopup,
+	create_branch_popup: CreateBranchPopup,
+	create_remote_popup: CreateRemotePopup,
+	rename_remote_popup: RenameRemotePopup,
+	update_remote_url_popup: UpdateRemoteUrlPopup,
+	remotes_popup: RemoteListPopup,
+	rename_branch_popup: RenameBranchPopup,
+	select_branch_popup: BranchListPopup,
+	options_popup: OptionsPopup,
+	submodule_popup: SubmodulesListPopup,
+	tags_popup: TagListPopup,
+	reset_popup: ResetPopup,
 	cmdbar: RefCell<CommandBar>,
 	tab: usize,
 	revlog: Revlog,
@@ -171,39 +176,43 @@ impl App {
 
 		let mut app = Self {
 			input,
-			reset: ConfirmComponent::new(&env),
-			commit: CommitComponent::new(&env),
-			blame_file_popup: BlameFileComponent::new(
+			confirm_popup: ConfirmPopup::new(&env),
+			commit_popup: CommitPopup::new(&env),
+			blame_file_popup: BlameFilePopup::new(
 				&env,
 				&strings::blame_title(&env.key_config),
 			),
-			file_revlog_popup: FileRevlogComponent::new(&env),
+			file_revlog_popup: FileRevlogPopup::new(&env),
 			revision_files_popup: RevisionFilesPopup::new(&env),
-			stashmsg_popup: StashMsgComponent::new(&env),
-			inspect_commit_popup: InspectCommitComponent::new(&env),
-			compare_commits_popup: CompareCommitsComponent::new(&env),
-			external_editor_popup: ExternalEditorComponent::new(&env),
-			push_popup: PushComponent::new(&env),
-			push_tags_popup: PushTagsComponent::new(&env),
-			reset_popup: ResetPopupComponent::new(&env),
-			pull_popup: PullComponent::new(&env),
-			fetch_popup: FetchComponent::new(&env),
-			tag_commit_popup: TagCommitComponent::new(&env),
-			create_branch_popup: CreateBranchComponent::new(&env),
-			rename_branch_popup: RenameBranchComponent::new(&env),
-			select_branch_popup: BranchListComponent::new(&env),
-			tags_popup: TagListComponent::new(&env),
-			options_popup: OptionsPopupComponent::new(&env),
-			submodule_popup: SubmodulesListComponent::new(&env),
-			log_search_popup: LogSearchPopupComponent::new(&env),
+			stashmsg_popup: StashMsgPopup::new(&env),
+			inspect_commit_popup: InspectCommitPopup::new(&env),
+			compare_commits_popup: CompareCommitsPopup::new(&env),
+			external_editor_popup: ExternalEditorPopup::new(&env),
+			push_popup: PushPopup::new(&env),
+			push_tags_popup: PushTagsPopup::new(&env),
+			reset_popup: ResetPopup::new(&env),
+			pull_popup: PullPopup::new(&env),
+			fetch_popup: FetchPopup::new(&env),
+			tag_commit_popup: TagCommitPopup::new(&env),
+			create_branch_popup: CreateBranchPopup::new(&env),
+			create_remote_popup: CreateRemotePopup::new(&env),
+			rename_remote_popup: RenameRemotePopup::new(&env),
+			update_remote_url_popup: UpdateRemoteUrlPopup::new(&env),
+			remotes_popup: RemoteListPopup::new(&env),
+			rename_branch_popup: RenameBranchPopup::new(&env),
+			select_branch_popup: BranchListPopup::new(&env),
+			tags_popup: TagListPopup::new(&env),
+			options_popup: OptionsPopup::new(&env),
+			submodule_popup: SubmodulesListPopup::new(&env),
+			log_search_popup: LogSearchPopupPopup::new(&env),
 			fuzzy_find_popup: FuzzyFindPopup::new(&env),
 			do_quit: QuitState::None,
 			cmdbar: RefCell::new(CommandBar::new(
 				env.theme.clone(),
 				env.key_config.clone(),
 			)),
-			help: HelpComponent::new(&env),
-			msg: MsgComponent::new(&env),
+			help_popup: HelpPopup::new(&env),
+			msg_popup: MsgPopup::new(&env),
 			revlog: Revlog::new(&env),
 			status_tab: Status::new(&env),
 			stashing_tab: Stashing::new(&env),
@@ -227,8 +236,8 @@ impl App {
 	}
 
 	///
-	pub fn draw<B: Backend>(&self, f: &mut Frame<B>) -> Result<()> {
-		let fsize = f.size();
+	pub fn draw(&self, f: &mut Frame) -> Result<()> {
+		let fsize = f.area();
 
 		self.cmdbar.borrow_mut().refresh_width(fsize.width);
 
@@ -345,21 +354,21 @@ impl App {
 			if matches!(polling_state, InputState::Paused) {
 				let result =
 					if let Some(path) = self.file_to_open.take() {
-						ExternalEditorComponent::open_file_in_editor(
+						ExternalEditorPopup::open_file_in_editor(
 							&self.repo.borrow(),
 							Path::new(&path),
 						)
 					} else {
 						let changes =
 							self.status_tab.get_files_changes()?;
-						self.commit.show_editor(changes)
+						self.commit_popup.show_editor(changes)
 					};
 
 				if let Err(e) = result {
 					let msg =
 						format!("failed to launch editor:\n{e}");
 					log::error!("{}", msg.as_str());
-					self.msg.show_error(msg.as_str())?;
+					self.msg_popup.show_error(msg.as_str())?;
 				}
 
 				self.requires_redraw.set(true);
@@ -375,7 +384,7 @@ impl App {
 	pub fn update(&mut self) -> Result<()> {
 		log::trace!("update");
 
-		self.commit.update();
+		self.commit_popup.update();
 		self.status_tab.update()?;
 		self.revlog.update()?;
 		self.files_tab.update()?;
@@ -399,7 +408,6 @@ impl App {
 			self.status_tab.update_git(ev)?;
 			self.stashing_tab.update_git(ev)?;
 			self.revlog.update_git(ev)?;
-			self.blame_file_popup.update_git(ev)?;
 			self.file_revlog_popup.update_git(ev)?;
 			self.inspect_commit_popup.update_git(ev)?;
 			self.compare_commits_popup.update_git(ev)?;
@@ -411,6 +419,7 @@ impl App {
 		}
 
 		self.files_tab.update_async(ev)?;
+		self.blame_file_popup.update_async(ev)?;
 		self.revision_files_popup.update(ev)?;
 		self.tags_popup.update(ev);
 
@@ -469,9 +478,9 @@ impl App {
 		[
 			log_search_popup,
 			fuzzy_find_popup,
-			msg,
-			reset,
-			commit,
+			msg_popup,
+			confirm_popup,
+			commit_popup,
 			blame_file_popup,
 			file_revlog_popup,
 			stashmsg_popup,
@@ -483,15 +492,19 @@ impl App {
 			pull_popup,
 			fetch_popup,
 			tag_commit_popup,
+			reset_popup,
 			create_branch_popup,
+			create_remote_popup,
+			rename_remote_popup,
+			update_remote_url_popup,
+			remotes_popup,
 			rename_branch_popup,
 			select_branch_popup,
 			revision_files_popup,
 			submodule_popup,
 			tags_popup,
-			reset_popup,
 			options_popup,
-			help,
+			help_popup,
 			revlog,
 			status_tab,
 			files_tab,
@@ -503,9 +516,9 @@ impl App {
 	setup_popups!(
 		self,
 		[
-			commit,
+			commit_popup,
 			stashmsg_popup,
-			help,
+			help_popup,
 			inspect_commit_popup,
 			compare_commits_popup,
 			blame_file_popup,
@@ -513,6 +526,10 @@ impl App {
 			external_editor_popup,
 			tag_commit_popup,
 			select_branch_popup,
+			remotes_popup,
+			create_remote_popup,
+			rename_remote_popup,
+			update_remote_url_popup,
 			submodule_popup,
 			tags_popup,
 			reset_popup,
@@ -526,8 +543,8 @@ impl App {
 			pull_popup,
 			fetch_popup,
 			options_popup,
-			reset,
-			msg
+			confirm_popup,
+			msg_popup
 		]
 	);
 
@@ -619,8 +636,8 @@ impl App {
 	}
 
 	fn update_commands(&mut self) {
-		if self.help.is_visible() {
-			self.help.set_cmds(self.commands(true));
+		if self.help_popup.is_visible() {
+			self.help_popup.set_cmds(self.commands(true));
 		}
 		self.cmdbar.borrow_mut().set_cmds(self.commands(false));
 	}
@@ -646,6 +663,9 @@ impl App {
 		}
 		if flags.contains(NeedsUpdate::BRANCHES) {
 			self.select_branch_popup.update_branches()?;
+		}
+		if flags.contains(NeedsUpdate::REMOTES) {
+			self.remotes_popup.update_remotes()?;
 		}
 
 		Ok(())
@@ -703,23 +723,23 @@ impl App {
 				self.process_confirmed_action(action, &mut flags)?;
 			}
 			InternalEvent::ConfirmAction(action) => {
-				self.reset.open(action)?;
+				self.confirm_popup.open(action)?;
 				flags.insert(NeedsUpdate::COMMANDS);
 			}
 			InternalEvent::ShowErrorMsg(msg) => {
-				self.msg.show_error(msg.as_str())?;
+				self.msg_popup.show_error(msg.as_str())?;
 				flags
 					.insert(NeedsUpdate::ALL | NeedsUpdate::COMMANDS);
 			}
 			InternalEvent::ShowInfoMsg(msg) => {
-				self.msg.show_info(msg.as_str())?;
+				self.msg_popup.show_info(msg.as_str())?;
 				flags
 					.insert(NeedsUpdate::ALL | NeedsUpdate::COMMANDS);
 			}
 			InternalEvent::Update(u) => flags.insert(u),
-			InternalEvent::OpenCommit => self.commit.show()?,
+			InternalEvent::OpenCommit => self.commit_popup.show()?,
 			InternalEvent::RewordCommit(id) => {
-				self.commit.open(Some(id))?;
+				self.commit_popup.open(Some(id))?;
 			}
 			InternalEvent::PopupStashing(opts) => {
 				self.stashmsg_popup.options(opts);
@@ -728,7 +748,19 @@ impl App {
 			InternalEvent::TagCommit(id) => {
 				self.tag_commit_popup.open(id)?;
 			}
-
+			InternalEvent::CreateRemote => {
+				self.create_remote_popup.open()?;
+			}
+			InternalEvent::RenameRemote(cur_name) => {
+				self.rename_remote_popup.open(cur_name)?;
+			}
+			InternalEvent::UpdateRemoteUrl(remote_name, cur_url) => {
+				self.update_remote_url_popup
+					.open(remote_name, cur_url)?;
+			}
+			InternalEvent::ViewRemotes => {
+				self.remotes_popup.open()?;
+			}
 			InternalEvent::CreateBranch => {
 				self.create_branch_popup.open()?;
 			}
@@ -927,6 +959,9 @@ impl App {
 			Action::DeleteRemoteBranch(branch_ref) => {
 				self.delete_remote_branch(&branch_ref)?;
 			}
+			Action::DeleteRemote(remote_name) => {
+				self.delete_remote(&remote_name);
+			}
 			Action::DeleteTag(tag_name) => {
 				self.delete_tag(tag_name)?;
 			}
@@ -1016,6 +1051,24 @@ impl App {
 		Ok(())
 	}
 
+	fn delete_remote(&self, remote_name: &str) {
+		let res =
+			sync::delete_remote(&self.repo.borrow(), remote_name);
+		match res {
+			Ok(()) => {
+				self.queue.push(InternalEvent::Update(
+					NeedsUpdate::ALL | NeedsUpdate::REMOTES,
+				));
+			}
+			Err(e) => {
+				log::error!("delete remote: {}", e,);
+				self.queue.push(InternalEvent::ShowErrorMsg(
+					format!("delete remote error:\n{e}",),
+				));
+			}
+		}
+	}
+
 	fn commands(&self, force_all: bool) -> Vec<CommandInfo> {
 		let mut res = Vec::new();
 
@@ -1070,12 +1123,12 @@ impl App {
 	}
 
 	//TODO: make this dynamic
-	fn draw_top_bar<B: Backend>(&self, f: &mut Frame<B>, r: Rect) {
+	fn draw_top_bar(&self, f: &mut Frame, r: Rect) {
 		const DIVIDER_PAD_SPACES: usize = 2;
 		const SIDE_PADS: usize = 2;
 		const MARGIN_LEFT_AND_RIGHT: usize = 2;
 
-		let r = r.inner(&Margin {
+		let r = r.inner(Margin {
 			vertical: 0,
 			horizontal: 1,
 		});
@@ -1110,7 +1163,8 @@ impl App {
 		let table_area = r; // use entire area to allow drawing the horizontal separator line
 		let text_area = left_right[1];
 
-		let tabs = tab_labels.into_iter().map(Line::from).collect();
+		let tabs: Vec<Line> =
+			tab_labels.into_iter().map(Line::from).collect();
 
 		f.render_widget(
 			Tabs::new(tabs)
@@ -1132,7 +1186,7 @@ impl App {
 					&self.repo_path_text,
 					text_area.width as usize,
 				),
-				self.theme.title(true),
+				self.theme.title(false),
 			)]))
 			.alignment(Alignment::Right),
 			text_area,

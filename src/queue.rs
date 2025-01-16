@@ -1,7 +1,8 @@
 use crate::{
-	components::{
+	components::FuzzyFinderTarget,
+	popups::{
 		AppOption, BlameFileOpen, FileRevOpen, FileTreeOpen,
-		FuzzyFinderTarget, InspectCommitOpen,
+		InspectCommitOpen,
 	},
 	tabs::StashingOptions,
 };
@@ -27,6 +28,8 @@ bitflags! {
 		const COMMANDS = 0b100;
 		/// branches have changed
 		const BRANCHES = 0b1000;
+		/// Remotes have changed
+		const REMOTES = 0b1001;
 	}
 }
 
@@ -34,8 +37,6 @@ bitflags! {
 pub struct ResetItem {
 	/// path to the item (folder/file)
 	pub path: String,
-	/// are talking about a folder here? otherwise it's a single file
-	pub is_folder: bool,
 }
 
 ///
@@ -49,6 +50,7 @@ pub enum Action {
 	DeleteRemoteBranch(String),
 	DeleteTag(String),
 	DeleteRemoteTag(String, String),
+	DeleteRemote(String),
 	ForcePush(String, bool),
 	PullMerge { incoming: usize, rebase: bool },
 	AbortMerge,
@@ -110,6 +112,10 @@ pub enum InternalEvent {
 	///
 	CreateBranch,
 	///
+	RenameRemote(String),
+	///
+	UpdateRemoteUrl(String, String),
+	///
 	RenameBranch(String, String),
 	///
 	SelectBranch,
@@ -139,6 +145,10 @@ pub enum InternalEvent {
 	PopupStackPush(StackablePopupOpen),
 	///
 	ViewSubmodules,
+	///
+	ViewRemotes,
+	///
+	CreateRemote,
 	///
 	OpenRepo { path: PathBuf },
 	///

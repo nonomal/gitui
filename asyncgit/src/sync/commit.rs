@@ -1,9 +1,13 @@
+//! Git Api for Commits
 use super::{CommitId, RepoPath};
+use crate::sync::sign::{SignBuilder, SignError};
 use crate::{
-	error::Result,
+	error::{Error, Result},
 	sync::{repository::repo, utils::get_head_repo},
 };
-use git2::{ErrorCode, ObjectType, Repository, Signature};
+use git2::{
+	message_prettify, ErrorCode, ObjectType, Repository, Signature,
+};
 use scopetime::scope_time;
 
 ///
@@ -15,11 +19,26 @@ pub fn amend(
 	scope_time!("amend");
 
 	let repo = repo(repo_path)?;
+	let config = repo.config()?;
+
 	let commit = repo.find_commit(id.into())?;
 
 	let mut index = repo.index()?;
 	let tree_id = index.write_tree()?;
 	let tree = repo.find_tree(tree_id)?;
+
+	if config.get_bool("commit.gpgsign").unwrap_or(false) {
+		// HACK: we undo the last commit and create a new one
+		use crate::sync::utils::undo_last_commit;
+
+		let head = get_head_repo(&repo)?;
+		if head == commit.id().into() {
+			undo_last_commit(repo_path)?;
+			return self::commit(repo_path, msg);
+		}
+
+		return Err(Error::SignAmendNonLastCommit);
+	}
 
 	let new_id = commit.amend(
 		Some("HEAD"),
@@ -65,7 +84,7 @@ pub fn commit(repo_path: &RepoPath, msg: &str) -> Result<CommitId> {
 	scope_time!("commit");
 
 	let repo = repo(repo_path)?;
-
+	let config = repo.config()?;
 	let signature = signature_allow_undefined_name(&repo)?;
 	let mut index = repo.index()?;
 	let tree_id = index.write_tree()?;
@@ -79,8 +98,50 @@ pub fn commit(repo_path: &RepoPath, msg: &str) -> Result<CommitId> {
 
 	let parents = parents.iter().collect::<Vec<_>>();
 
-	Ok(repo
-		.commit(
+	let commit_id = if config
+		.get_bool("commit.gpgsign")
+		.unwrap_or(false)
+	{
+		let buffer = repo.commit_create_buffer(
+			&signature,
+			&signature,
+			msg,
+			&tree,
+			parents.as_slice(),
+		)?;
+
+		let commit = std::str::from_utf8(&buffer).map_err(|_e| {
+			SignError::Shellout("utf8 conversion error".to_string())
+		})?;
+
+		let signer = SignBuilder::from_gitconfig(&repo, &config)?;
+		let (signature, signature_field) = signer.sign(&buffer)?;
+		let commit_id = repo.commit_signed(
+			commit,
+			&signature,
+			signature_field.as_deref(),
+		)?;
+
+		// manually advance to the new commit ID
+		// repo.commit does that on its own, repo.commit_signed does not
+		// if there is no head, read default branch or default to "master"
+		if let Ok(mut head) = repo.head() {
+			head.set_target(commit_id, msg)?;
+		} else {
+			let default_branch_name = config
+				.get_str("init.defaultBranch")
+				.unwrap_or("master");
+			repo.reference(
+				&format!("refs/heads/{default_branch_name}"),
+				commit_id,
+				true,
+				msg,
+			)?;
+		}
+
+		commit_id
+	} else {
+		repo.commit(
 			Some("HEAD"),
 			&signature,
 			&signature,
@@ -88,7 +149,9 @@ pub fn commit(repo_path: &RepoPath, msg: &str) -> Result<CommitId> {
 			&tree,
 			parents.as_slice(),
 		)?
-		.into())
+	};
+
+	Ok(commit_id.into())
 }
 
 /// Tag a commit.
@@ -119,9 +182,23 @@ pub fn tag_commit(
 	Ok(c)
 }
 
+/// Loads the comment prefix from config & uses it to prettify commit messages
+pub fn commit_message_prettify(
+	repo_path: &RepoPath,
+	message: String,
+) -> Result<String> {
+	let comment_char = repo(repo_path)?
+		.config()?
+		.get_string("core.commentChar")
+		.ok()
+		.and_then(|char_string| char_string.chars().next())
+		.unwrap_or('#') as u8;
+
+	Ok(message_prettify(message, Some(comment_char))?)
+}
+
 #[cfg(test)]
 mod tests {
-
 	use crate::error::Result;
 	use crate::sync::tags::Tag;
 	use crate::sync::RepoPath;
@@ -132,7 +209,7 @@ mod tests {
 		utils::get_head,
 		LogWalker,
 	};
-	use commit::{amend, tag_commit};
+	use commit::{amend, commit_message_prettify, tag_commit};
 	use git2::Repository;
 	use std::{fs::File, io::Write, path::Path};
 
@@ -253,10 +330,7 @@ mod tests {
 			vec![Tag::new("tag")]
 		);
 
-		assert!(matches!(
-			tag_commit(repo_path, &new_id, "tag", None),
-			Err(_)
-		));
+		assert!(tag_commit(repo_path, &new_id, "tag", None).is_err());
 
 		assert_eq!(
 			get_tags(repo_path).unwrap()[&new_id],
@@ -324,13 +398,13 @@ mod tests {
 
 		let error = commit(repo_path, "commit msg");
 
-		assert!(matches!(error, Err(_)));
+		assert!(error.is_err());
 
 		repo.config()?.set_str("user.email", "email")?;
 
 		let success = commit(repo_path, "commit msg");
 
-		assert!(matches!(success, Ok(_)));
+		assert!(success.is_ok());
 		assert_eq!(count_commits(&repo, 10), 1);
 
 		let details =
@@ -360,7 +434,7 @@ mod tests {
 
 		let mut success = commit(repo_path, "commit msg");
 
-		assert!(matches!(success, Ok(_)));
+		assert!(success.is_ok());
 		assert_eq!(count_commits(&repo, 10), 1);
 
 		let mut details =
@@ -373,7 +447,7 @@ mod tests {
 
 		success = commit(repo_path, "commit msg");
 
-		assert!(matches!(success, Ok(_)));
+		assert!(success.is_ok());
 		assert_eq!(count_commits(&repo, 10), 2);
 
 		details =
@@ -381,6 +455,43 @@ mod tests {
 
 		assert_eq!(details.author.name, "name");
 		assert_eq!(details.author.email, "email");
+
+		Ok(())
+	}
+
+	#[test]
+	fn test_empty_comment_char() -> Result<()> {
+		let (_td, repo) = repo_init_empty().unwrap();
+
+		let root = repo.path().parent().unwrap();
+		let repo_path: &RepoPath =
+			&root.as_os_str().to_str().unwrap().into();
+
+		let message = commit_message_prettify(
+			repo_path,
+			"#This is a test message\nTest".to_owned(),
+		)?;
+
+		assert_eq!(message, "Test\n");
+		Ok(())
+	}
+
+	#[test]
+	fn test_with_comment_char() -> Result<()> {
+		let (_td, repo) = repo_init_empty().unwrap();
+
+		let root = repo.path().parent().unwrap();
+		let repo_path: &RepoPath =
+			&root.as_os_str().to_str().unwrap().into();
+
+		repo.config()?.set_str("core.commentChar", ";")?;
+
+		let message = commit_message_prettify(
+			repo_path,
+			";This is a test message\nTest".to_owned(),
+		)?;
+
+		assert_eq!(message, "Test\n");
 
 		Ok(())
 	}

@@ -13,7 +13,9 @@ use crate::{
 	ProgressPercent,
 };
 use crossbeam_channel::Sender;
-use git2::{BranchType, FetchOptions, ProxyOptions, Repository};
+use git2::{
+	BranchType, FetchOptions, ProxyOptions, Remote, Repository,
+};
 use scopetime::scope_time;
 use utils::bytes2string;
 
@@ -33,6 +35,54 @@ pub fn proxy_auto<'a>() -> ProxyOptions<'a> {
 }
 
 ///
+pub fn add_remote(
+	repo_path: &RepoPath,
+	name: &str,
+	url: &str,
+) -> Result<()> {
+	let repo = repo(repo_path)?;
+	repo.remote(name, url)?;
+	Ok(())
+}
+
+///
+pub fn rename_remote(
+	repo_path: &RepoPath,
+	name: &str,
+	new_name: &str,
+) -> Result<()> {
+	let repo = repo(repo_path)?;
+	repo.remote_rename(name, new_name)?;
+	Ok(())
+}
+
+///
+pub fn update_remote_url(
+	repo_path: &RepoPath,
+	name: &str,
+	new_url: &str,
+) -> Result<()> {
+	let repo = repo(repo_path)?;
+	repo.remote_set_url(name, new_url)?;
+	Ok(())
+}
+
+///
+pub fn delete_remote(
+	repo_path: &RepoPath,
+	remote_name: &str,
+) -> Result<()> {
+	let repo = repo(repo_path)?;
+	repo.remote_delete(remote_name)?;
+	Ok(())
+}
+
+///
+pub fn validate_remote_name(name: &str) -> bool {
+	Remote::is_valid_name(name)
+}
+
+///
 pub fn get_remotes(repo_path: &RepoPath) -> Result<Vec<String>> {
 	scope_time!("get_remotes");
 
@@ -44,11 +94,142 @@ pub fn get_remotes(repo_path: &RepoPath) -> Result<Vec<String>> {
 	Ok(remotes)
 }
 
+///
+pub fn get_remote_url(
+	repo_path: &RepoPath,
+	remote_name: &str,
+) -> Result<Option<String>> {
+	let repo = repo(repo_path)?;
+	let remote = repo.find_remote(remote_name)?.clone();
+	let url = remote.url();
+	if let Some(u) = url {
+		return Ok(Some(u.to_string()));
+	}
+	Ok(None)
+}
+
 /// tries to find origin or the only remote that is defined if any
 /// in case of multiple remotes and none named *origin* we fail
 pub fn get_default_remote(repo_path: &RepoPath) -> Result<String> {
 	let repo = repo(repo_path)?;
 	get_default_remote_in_repo(&repo)
+}
+
+/// Gets the current branch the user is on.
+/// Returns none if they are not on a branch
+/// and Err if there was a problem finding the branch
+fn get_current_branch(
+	repo: &Repository,
+) -> Result<Option<git2::Branch>> {
+	for b in repo.branches(None)? {
+		let branch = b?.0;
+		if branch.is_head() {
+			return Ok(Some(branch));
+		}
+	}
+	Ok(None)
+}
+
+/// Tries to find the default repo to fetch from based on configuration.
+///
+/// > branch.<name>.remote
+/// >
+/// > When on branch `<name>`, it tells `git fetch` and `git push` which remote to fetch from or
+/// > push to. [...] If no remote is configured, or if you are not on any branch and there is more
+/// > than one remote defined in the repository, it defaults to `origin` for fetching [...].
+///
+/// [git-config-branch-name-remote]: https://git-scm.com/docs/git-config#Documentation/git-config.txt-branchltnamegtremote
+///
+/// Falls back to `get_default_remote_in_repo`.
+pub fn get_default_remote_for_fetch(
+	repo_path: &RepoPath,
+) -> Result<String> {
+	let repo = repo(repo_path)?;
+	get_default_remote_for_fetch_in_repo(&repo)
+}
+
+// TODO: Very similar to `get_default_remote_for_push_in_repo`. Can probably be refactored.
+pub(crate) fn get_default_remote_for_fetch_in_repo(
+	repo: &Repository,
+) -> Result<String> {
+	scope_time!("get_default_remote_for_fetch_in_repo");
+
+	let config = repo.config()?;
+
+	let branch = get_current_branch(repo)?;
+
+	if let Some(branch) = branch {
+		let remote_name = bytes2string(branch.name_bytes()?)?;
+
+		let entry_name = format!("branch.{}.remote", &remote_name);
+
+		if let Ok(entry) = config.get_entry(&entry_name) {
+			return bytes2string(entry.value_bytes());
+		}
+	}
+
+	get_default_remote_in_repo(repo)
+}
+
+/// Tries to find the default repo to push to based on configuration.
+///
+/// > remote.pushDefault
+/// >
+/// > The remote to push to by default. Overrides `branch.<name>.remote` for all branches, and is
+/// > overridden by `branch.<name>.pushRemote` for specific branches.
+///
+/// > branch.<name>.remote
+/// >
+/// > When on branch `<name>`, it tells `git fetch` and `git push` which remote to fetch from or
+/// > push to. The remote to push to may be overridden with `remote.pushDefault` (for all
+/// > branches). The remote to push to, for the current branch, may be further overridden by
+/// > `branch.<name>.pushRemote`. If no remote is configured, or if you are not on any branch and
+/// > there is more than one remote defined in the repository, it defaults to `origin` for fetching
+/// > and `remote.pushDefault` for pushing.
+///
+/// [git-config-remote-push-default]: https://git-scm.com/docs/git-config#Documentation/git-config.txt-remotepushDefault
+/// [git-config-branch-name-remote]: https://git-scm.com/docs/git-config#Documentation/git-config.txt-branchltnamegtremote
+///
+/// Falls back to `get_default_remote_in_repo`.
+pub fn get_default_remote_for_push(
+	repo_path: &RepoPath,
+) -> Result<String> {
+	let repo = repo(repo_path)?;
+	get_default_remote_for_push_in_repo(&repo)
+}
+
+// TODO: Very similar to `get_default_remote_for_fetch_in_repo`. Can probably be refactored.
+pub(crate) fn get_default_remote_for_push_in_repo(
+	repo: &Repository,
+) -> Result<String> {
+	scope_time!("get_default_remote_for_push_in_repo");
+
+	let config = repo.config()?;
+
+	let branch = get_current_branch(repo)?;
+
+	if let Some(branch) = branch {
+		let remote_name = bytes2string(branch.name_bytes()?)?;
+
+		let entry_name =
+			format!("branch.{}.pushRemote", &remote_name);
+
+		if let Ok(entry) = config.get_entry(&entry_name) {
+			return bytes2string(entry.value_bytes());
+		}
+
+		if let Ok(entry) = config.get_entry("remote.pushDefault") {
+			return bytes2string(entry.value_bytes());
+		}
+
+		let entry_name = format!("branch.{}.remote", &remote_name);
+
+		if let Ok(entry) = config.get_entry(&entry_name) {
+			return bytes2string(entry.value_bytes());
+		}
+	}
+
+	get_default_remote_in_repo(repo)
 }
 
 /// see `get_default_remote`
@@ -60,9 +241,9 @@ pub(crate) fn get_default_remote_in_repo(
 	let remotes = repo.remotes()?;
 
 	// if `origin` exists return that
-	let found_origin = remotes.iter().any(|r| {
-		r.map(|r| r == DEFAULT_REMOTE_NAME).unwrap_or_default()
-	});
+	let found_origin = remotes
+		.iter()
+		.any(|r| r.is_some_and(|r| r == DEFAULT_REMOTE_NAME));
 	if found_origin {
 		return Ok(DEFAULT_REMOTE_NAME.into());
 	}
@@ -254,7 +435,7 @@ mod tests {
 			&format!("git remote add origin {remote_path}")[..],
 		);
 
-		//NOTE: aparently remotes are not chronolically sorted but alphabetically
+		//NOTE: apparently remotes are not chronolically sorted but alphabetically
 		let remotes = get_remotes(repo_path).unwrap();
 
 		assert_eq!(
@@ -299,9 +480,104 @@ mod tests {
 			]
 		);
 
-		let res =
+		let default_remote =
 			get_default_remote_in_repo(&repo(repo_path).unwrap());
-		assert_eq!(res.is_err(), true);
-		assert!(matches!(res, Err(Error::NoDefaultRemoteFound)));
+
+		assert!(matches!(
+			default_remote,
+			Err(Error::NoDefaultRemoteFound)
+		));
+	}
+
+	#[test]
+	fn test_default_remote_for_fetch() {
+		let (remote_dir, _remote) = repo_init().unwrap();
+		let remote_path = remote_dir.path().to_str().unwrap();
+		let (repo_dir, repo) = repo_clone(remote_path).unwrap();
+		let repo_path: &RepoPath = &repo_dir
+			.into_path()
+			.as_os_str()
+			.to_str()
+			.unwrap()
+			.into();
+
+		debug_cmd_print(
+			repo_path,
+			"git remote rename origin alternate",
+		);
+
+		debug_cmd_print(
+			repo_path,
+			&format!("git remote add someremote {remote_path}")[..],
+		);
+
+		let mut config = repo.config().unwrap();
+
+		config
+			.set_str("branch.master.remote", "branchremote")
+			.unwrap();
+
+		let default_fetch_remote =
+			get_default_remote_for_fetch_in_repo(&repo);
+
+		assert!(
+			matches!(default_fetch_remote, Ok(remote_name) if remote_name == "branchremote")
+		);
+	}
+
+	#[test]
+	fn test_default_remote_for_push() {
+		let (remote_dir, _remote) = repo_init().unwrap();
+		let remote_path = remote_dir.path().to_str().unwrap();
+		let (repo_dir, repo) = repo_clone(remote_path).unwrap();
+		let repo_path: &RepoPath = &repo_dir
+			.into_path()
+			.as_os_str()
+			.to_str()
+			.unwrap()
+			.into();
+
+		debug_cmd_print(
+			repo_path,
+			"git remote rename origin alternate",
+		);
+
+		debug_cmd_print(
+			repo_path,
+			&format!("git remote add someremote {remote_path}")[..],
+		);
+
+		let mut config = repo.config().unwrap();
+
+		config
+			.set_str("branch.master.remote", "branchremote")
+			.unwrap();
+
+		let default_push_remote =
+			get_default_remote_for_push_in_repo(&repo);
+
+		assert!(
+			matches!(default_push_remote, Ok(remote_name) if remote_name == "branchremote")
+		);
+
+		config.set_str("remote.pushDefault", "pushdefault").unwrap();
+
+		let default_push_remote =
+			get_default_remote_for_push_in_repo(&repo);
+
+		assert!(
+			matches!(default_push_remote, Ok(remote_name) if remote_name == "pushdefault")
+		);
+
+		config
+			.set_str("branch.master.pushRemote", "branchpushremote")
+			.unwrap();
+
+		let default_push_remote =
+			get_default_remote_for_push_in_repo(&repo);
+
+		assert!(
+			matches!(default_push_remote, Ok(remote_name) if remote_name == "branchpushremote")
+		);
 	}
 }

@@ -3,10 +3,10 @@ use crate::{
 	components::{
 		visibility_blocking, CommandBlocking, CommandInfo,
 		CommitDetailsComponent, CommitList, Component,
-		DrawableComponent, EventState, FileTreeOpen,
-		InspectCommitOpen,
+		DrawableComponent, EventState,
 	},
 	keys::{key_match, SharedKeyConfig},
+	popups::{FileTreeOpen, InspectCommitOpen},
 	queue::{InternalEvent, Queue, StackablePopupOpen},
 	strings::{self, order},
 	try_or_popup,
@@ -27,13 +27,19 @@ use crossbeam_channel::Sender;
 use crossterm::event::Event;
 use indexmap::IndexSet;
 use ratatui::{
-	backend::Backend,
 	layout::{Alignment, Constraint, Direction, Layout, Rect},
 	text::Span,
 	widgets::{Block, Borders, Paragraph},
 	Frame,
 };
-use std::{rc::Rc, time::Duration};
+use std::{
+	rc::Rc,
+	sync::{
+		atomic::{AtomicBool, Ordering},
+		Arc,
+	},
+	time::Duration,
+};
 use sync::CommitTags;
 
 struct LogSearchResult {
@@ -48,6 +54,7 @@ enum LogSearch {
 		AsyncSingleJob<AsyncCommitFilterJob>,
 		LogFilterSearchOptions,
 		Option<ProgressPercent>,
+		Arc<AtomicBool>,
 	),
 	Results(LogSearchResult),
 }
@@ -114,7 +121,7 @@ impl Revlog {
 	}
 
 	const fn is_search_pending(&self) -> bool {
-		matches!(self.search, LogSearch::Searching(_, _, _))
+		matches!(self.search, LogSearch::Searching(_, _, _, _))
 	}
 
 	///
@@ -131,11 +138,11 @@ impl Revlog {
 
 			if self.commit_details.is_visible() {
 				let commit = self.selected_commit();
-				let tags = self.selected_commit_tags(&commit);
+				let tags = self.selected_commit_tags(commit.as_ref());
 
 				self.commit_details.set_commits(
 					commit.map(CommitFilesParams::from),
-					&tags,
+					tags.as_ref(),
 				)?;
 			}
 		}
@@ -199,12 +206,12 @@ impl Revlog {
 
 	fn selected_commit_tags(
 		&self,
-		commit: &Option<CommitId>,
+		commit: Option<&CommitId>,
 	) -> Option<CommitTags> {
 		let tags = self.list.tags();
 
 		commit.and_then(|commit| {
-			tags.and_then(|tags| tags.get(&commit).cloned())
+			tags.and_then(|tags| tags.get(commit).cloned())
 		})
 	}
 
@@ -224,7 +231,8 @@ impl Revlog {
 
 	fn inspect_commit(&self) {
 		if let Some(commit_id) = self.selected_commit() {
-			let tags = self.selected_commit_tags(&Some(commit_id));
+			let tags =
+				self.selected_commit_tags(Some(commit_id).as_ref());
 			self.queue.push(InternalEvent::OpenPopup(
 				StackablePopupOpen::InspectCommit(
 					InspectCommitOpen::new_with_tags(commit_id, tags),
@@ -248,23 +256,48 @@ impl Revlog {
 				LogFilterSearch::new(options.clone()),
 			);
 
-			let mut job = AsyncSingleJob::new(self.sender.clone());
+			let cancellation_flag = Arc::new(AtomicBool::new(false));
+
+			let job = AsyncSingleJob::new(self.sender.clone());
 			job.spawn(AsyncCommitFilterJob::new(
 				self.repo.borrow().clone(),
 				self.list.copy_items(),
 				filter,
+				Arc::clone(&cancellation_flag),
 			));
 
-			self.search = LogSearch::Searching(job, options, None);
+			self.search = LogSearch::Searching(
+				job,
+				options,
+				None,
+				Arc::clone(&cancellation_flag),
+			);
 
 			self.list.set_highlighting(None);
 		}
 	}
 
+	fn cancel_search(&mut self) -> bool {
+		if let LogSearch::Searching(_, _, _, cancellation_flag) =
+			&self.search
+		{
+			cancellation_flag.store(true, Ordering::Relaxed);
+			self.list.set_highlighting(None);
+			return true;
+		}
+
+		false
+	}
+
 	fn update_search_state(&mut self) {
 		match &mut self.search {
 			LogSearch::Off | LogSearch::Results(_) => (),
-			LogSearch::Searching(search, options, progress) => {
+			LogSearch::Searching(
+				search,
+				options,
+				progress,
+				cancel,
+			) => {
 				if search.is_pending() {
 					//update progress
 					*progress = search.progress();
@@ -274,20 +307,26 @@ impl Revlog {
 				{
 					match search {
 						Ok(search) => {
-							self.list.set_highlighting(Some(
-								Rc::new(
-									search
-										.result
-										.into_iter()
-										.collect::<IndexSet<_>>(),
-								),
-							));
+							let was_aborted =
+								cancel.load(Ordering::Relaxed);
 
-							self.search =
+							self.search = if was_aborted {
+								LogSearch::Off
+							} else {
+								self.list.set_highlighting(Some(
+									Rc::new(
+										search
+											.result
+											.into_iter()
+											.collect::<IndexSet<_>>(),
+									),
+								));
+
 								LogSearch::Results(LogSearchResult {
 									options: options.clone(),
 									duration: search.duration,
-								});
+								})
+							};
 						}
 						Err(err) => {
 							self.queue.push(
@@ -304,13 +343,13 @@ impl Revlog {
 		}
 	}
 
-	fn is_in_search_mode(&self) -> bool {
+	const fn is_in_search_mode(&self) -> bool {
 		!matches!(self.search, LogSearch::Off)
 	}
 
-	fn draw_search<B: Backend>(&self, f: &mut Frame<B>, area: Rect) {
+	fn draw_search(&self, f: &mut Frame, area: Rect) {
 		let (text, title) = match &self.search {
-			LogSearch::Searching(_, options, progress) => (
+			LogSearch::Searching(_, options, progress, _) => (
 				format!("'{}'", options.search_pattern.clone()),
 				format!(
 					"({}%)",
@@ -358,21 +397,17 @@ impl Revlog {
 		);
 	}
 
-	fn can_leave_search(&self) -> bool {
+	const fn can_close_search(&self) -> bool {
 		self.is_in_search_mode() && !self.is_search_pending()
 	}
 
 	fn can_start_search(&self) -> bool {
-		!self.git_log.is_pending()
+		!self.git_log.is_pending() && !self.is_search_pending()
 	}
 }
 
 impl DrawableComponent for Revlog {
-	fn draw<B: Backend>(
-		&self,
-		f: &mut Frame<B>,
-		area: Rect,
-	) -> Result<()> {
+	fn draw(&self, f: &mut Frame, area: Rect) -> Result<()> {
 		let area = if self.is_in_search_mode() {
 			Layout::default()
 				.direction(Direction::Vertical)
@@ -430,11 +465,13 @@ impl Component for Revlog {
 					k,
 					self.key_config.keys.exit_popup,
 				) {
-					if self.can_leave_search() {
-						self.search = LogSearch::Off;
+					if self.is_search_pending() {
+						self.cancel_search();
+					} else if self.can_close_search() {
 						self.list.set_highlighting(None);
-						return Ok(EventState::Consumed);
+						self.search = LogSearch::Off;
 					}
+					return Ok(EventState::Consumed);
 				} else if key_match(k, self.key_config.keys.copy) {
 					try_or_popup!(
 						self,
@@ -467,13 +504,15 @@ impl Component for Revlog {
 				} else if key_match(
 					k,
 					self.key_config.keys.select_branch,
-				) {
+				) && !self.is_search_pending()
+				{
 					self.queue.push(InternalEvent::SelectBranch);
 					return Ok(EventState::Consumed);
 				} else if key_match(
 					k,
 					self.key_config.keys.status_reset_item,
-				) {
+				) && !self.is_search_pending()
+				{
 					try_or_popup!(
 						self,
 						"revert error:",
@@ -484,7 +523,8 @@ impl Component for Revlog {
 				} else if key_match(
 					k,
 					self.key_config.keys.open_file_tree,
-				) {
+				) && !self.is_search_pending()
+				{
 					return self.selected_commit().map_or(
 						Ok(EventState::NotConsumed),
 						|id| {
@@ -503,8 +543,9 @@ impl Component for Revlog {
 					return Ok(EventState::Consumed);
 				} else if key_match(
 					k,
-					self.key_config.keys.log_reset_comit,
-				) {
+					self.key_config.keys.log_reset_commit,
+				) && !self.is_search_pending()
+				{
 					return self.selected_commit().map_or(
 						Ok(EventState::NotConsumed),
 						|id| {
@@ -516,8 +557,9 @@ impl Component for Revlog {
 					);
 				} else if key_match(
 					k,
-					self.key_config.keys.log_reword_comit,
-				) {
+					self.key_config.keys.log_reword_commit,
+				) && !self.is_search_pending()
+				{
 					return self.selected_commit().map_or(
 						Ok(EventState::NotConsumed),
 						|id| {
@@ -537,6 +579,7 @@ impl Component for Revlog {
 					k,
 					self.key_config.keys.compare_commits,
 				) && self.list.marked_count() > 0
+					&& !self.is_search_pending()
 				{
 					if self.list.marked_count() == 1 {
 						// compare against head
@@ -582,7 +625,9 @@ impl Component for Revlog {
 			CommandInfo::new(
 				strings::commands::log_close_search(&self.key_config),
 				true,
-				(self.visible && self.can_leave_search())
+				(self.visible
+					&& (self.can_close_search()
+						|| self.is_search_pending()))
 					|| force_all,
 			)
 			.order(order::PRIORITY),
@@ -606,20 +651,24 @@ impl Component for Revlog {
 				&self.key_config,
 			),
 			true,
-			self.visible || force_all,
+			(self.visible && !self.is_search_pending()) || force_all,
 		));
 
 		out.push(CommandInfo::new(
 			strings::commands::compare_with_head(&self.key_config),
 			self.list.marked_count() == 1,
-			(self.visible && self.list.marked_count() <= 1)
+			(self.visible
+				&& !self.is_search_pending()
+				&& self.list.marked_count() <= 1)
 				|| force_all,
 		));
 
 		out.push(CommandInfo::new(
 			strings::commands::compare_commits(&self.key_config),
 			true,
-			(self.visible && self.list.marked_count() == 2)
+			(self.visible
+				&& !self.is_search_pending()
+				&& self.list.marked_count() == 2)
 				|| force_all,
 		));
 
@@ -656,24 +705,24 @@ impl Component for Revlog {
 		out.push(CommandInfo::new(
 			strings::commands::inspect_file_tree(&self.key_config),
 			self.selected_commit().is_some(),
-			self.visible || force_all,
+			(self.visible && !self.is_search_pending()) || force_all,
 		));
 
 		out.push(CommandInfo::new(
 			strings::commands::revert_commit(&self.key_config),
 			self.selected_commit().is_some(),
-			self.visible || force_all,
+			(self.visible && !self.is_search_pending()) || force_all,
 		));
 
 		out.push(CommandInfo::new(
 			strings::commands::log_reset_commit(&self.key_config),
 			self.selected_commit().is_some(),
-			self.visible || force_all,
+			(self.visible && !self.is_search_pending()) || force_all,
 		));
 		out.push(CommandInfo::new(
 			strings::commands::log_reword_commit(&self.key_config),
 			self.selected_commit().is_some(),
-			self.visible || force_all,
+			(self.visible && !self.is_search_pending()) || force_all,
 		));
 		out.push(CommandInfo::new(
 			strings::commands::log_find_commit(&self.key_config),

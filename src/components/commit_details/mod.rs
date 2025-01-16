@@ -21,7 +21,6 @@ use compare_details::CompareDetailsComponent;
 use crossterm::event::Event;
 use details::DetailsComponent;
 use ratatui::{
-	backend::Backend,
 	layout::{Constraint, Direction, Layout, Rect},
 	Frame,
 };
@@ -69,7 +68,7 @@ impl CommitDetailsComponent {
 	pub fn set_commits(
 		&mut self,
 		params: Option<CommitFilesParams>,
-		tags: &Option<CommitTags>,
+		tags: Option<&CommitTags>,
 	) -> Result<()> {
 		if params.is_none() {
 			self.single_details.set_commit(None, None);
@@ -88,7 +87,7 @@ impl CommitDetailsComponent {
 				}));
 			} else {
 				self.single_details
-					.set_commit(Some(id.id), tags.clone());
+					.set_commit(Some(id.id), tags.cloned());
 			}
 
 			if let Some((fetched_id, res)) =
@@ -135,16 +134,12 @@ impl CommitDetailsComponent {
 	}
 
 	fn is_compare(&self) -> bool {
-		self.commit.map(|p| p.other.is_some()).unwrap_or_default()
+		self.commit.is_some_and(|p| p.other.is_some())
 	}
 }
 
 impl DrawableComponent for CommitDetailsComponent {
-	fn draw<B: Backend>(
-		&self,
-		f: &mut Frame<B>,
-		rect: Rect,
-	) -> Result<()> {
+	fn draw(&self, f: &mut Frame, rect: Rect) -> Result<()> {
 		if !self.visible {
 			return Ok(());
 		}

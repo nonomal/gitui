@@ -21,7 +21,7 @@ impl<T: Copy + Send, P: Clone + Send + Sync + PartialEq>
 	/// send an intermediate update notification.
 	/// do not confuse this with the return value of `run`.
 	/// `send` should only be used about progress notifications
-	/// and not for the final notifcation indicating the end of the async job.
+	/// and not for the final notification indicating the end of the async job.
 	/// see `run` for more info
 	pub fn send(&self, notification: T) -> Result<()> {
 		self.sender.send(notification)?;
@@ -92,7 +92,7 @@ impl<J: 'static + AsyncJob> AsyncSingleJob<J> {
 	}
 
 	/// makes sure `next` is cleared and returns `true` if it actually canceled something
-	pub fn cancel(&mut self) -> bool {
+	pub fn cancel(&self) -> bool {
 		if let Ok(mut next) = self.next.lock() {
 			if next.is_some() {
 				*next = None;
@@ -111,7 +111,7 @@ impl<J: 'static + AsyncJob> AsyncSingleJob<J> {
 	/// spawns `task` if nothing is running currently,
 	/// otherwise schedules as `next` overwriting if `next` was set before.
 	/// return `true` if the new task gets started right away.
-	pub fn spawn(&mut self, task: J) -> bool {
+	pub fn spawn(&self, task: J) -> bool {
 		self.schedule_next(task);
 		self.check_for_job()
 	}
@@ -162,7 +162,7 @@ impl<J: 'static + AsyncJob> AsyncSingleJob<J> {
 		Ok(())
 	}
 
-	fn schedule_next(&mut self, task: J) {
+	fn schedule_next(&self, task: J) {
 		if let Ok(mut next) = self.next.lock() {
 			*next = Some(task);
 		}
@@ -191,10 +191,10 @@ mod test {
 		value_to_add: u32,
 	}
 
-	type TestNotificaton = ();
+	type TestNotification = ();
 
 	impl AsyncJob for TestJob {
-		type Notification = TestNotificaton;
+		type Notification = TestNotification;
 		type Progress = ();
 
 		fn run(
@@ -226,7 +226,7 @@ mod test {
 	fn test_overwrite() {
 		let (sender, receiver) = unbounded();
 
-		let mut job: AsyncSingleJob<TestJob> =
+		let job: AsyncSingleJob<TestJob> =
 			AsyncSingleJob::new(sender);
 
 		let task = TestJob {
@@ -265,7 +265,7 @@ mod test {
 	fn test_cancel() {
 		let (sender, receiver) = unbounded();
 
-		let mut job: AsyncSingleJob<TestJob> =
+		let job: AsyncSingleJob<TestJob> =
 			AsyncSingleJob::new(sender);
 
 		let task = TestJob {

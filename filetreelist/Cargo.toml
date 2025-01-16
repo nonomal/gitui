@@ -1,6 +1,6 @@
 [package]
 name = "filetreelist"
-version = "0.5.0"
+version = "0.5.2"
 authors = ["extrawurst <mail@rusticorn.com>"]
 edition = "2021"
 description = "filetree abstraction based on a sorted path list, supports key based navigation events, folding, scrolling and more"
@@ -10,9 +10,10 @@ readme = "README.md"
 license = "MIT"
 categories = ["command-line-utilities"]
 keywords = ["gui", "cli", "terminal", "ui", "tui"]
+exclude = ["/demo.gif"]
 
 [dependencies]
-thiserror = "1.0"
+thiserror = "2.0"
 
 [dev-dependencies]
 pretty_assertions = "1.4"

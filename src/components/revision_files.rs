@@ -1,11 +1,12 @@
 use super::{
-	utils::scroll_vertical::VerticalScroll, BlameFileOpen,
-	CommandBlocking, CommandInfo, Component, DrawableComponent,
-	EventState, FileRevOpen, FuzzyFinderTarget, SyntaxTextComponent,
+	utils::scroll_vertical::VerticalScroll, CommandBlocking,
+	CommandInfo, Component, DrawableComponent, EventState,
+	FuzzyFinderTarget, SyntaxTextComponent,
 };
 use crate::{
 	app::Environment,
 	keys::{key_match, SharedKeyConfig},
+	popups::{BlameFileOpen, FileRevOpen},
 	queue::{InternalEvent, Queue, StackablePopupOpen},
 	strings::{self, order, symbol},
 	try_or_popup,
@@ -23,14 +24,13 @@ use asyncgit::{
 use crossterm::event::Event;
 use filetreelist::{FileTree, FileTreeItem};
 use ratatui::{
-	backend::Backend,
 	layout::{Constraint, Direction, Layout, Rect},
 	text::Span,
 	widgets::{Block, Borders},
 	Frame,
 };
 use std::{borrow::Cow, fmt::Write};
-use std::{collections::BTreeSet, convert::From, path::Path};
+use std::{collections::BTreeSet, path::Path};
 use unicode_truncate::UnicodeTruncateStr;
 use unicode_width::UnicodeWidthStr;
 
@@ -81,7 +81,7 @@ impl RevisionFilesComponent {
 		self.show()?;
 
 		let same_id =
-			self.revision.as_ref().map_or(false, |c| c.id == commit);
+			self.revision.as_ref().is_some_and(|c| c.id == commit);
 
 		if !same_id {
 			self.files = None;
@@ -98,11 +98,6 @@ impl RevisionFilesComponent {
 	///
 	pub const fn revision(&self) -> Option<&CommitInfo> {
 		self.revision.as_ref()
-	}
-
-	///
-	pub const fn selection(&self) -> Option<usize> {
-		self.tree.selection()
 	}
 
 	///
@@ -125,8 +120,7 @@ impl RevisionFilesComponent {
 				if self
 					.revision
 					.as_ref()
-					.map(|commit| commit.id == result.commit)
-					.unwrap_or_default()
+					.is_some_and(|commit| commit.id == result.commit)
 				{
 					if let Ok(last) = result.result {
 						let filenames: Vec<&Path> = last
@@ -193,7 +187,7 @@ impl RevisionFilesComponent {
 	}
 
 	fn blame(&self) -> bool {
-		self.selected_file_path().map_or(false, |path| {
+		self.selected_file_path().is_some_and(|path| {
 			self.queue.push(InternalEvent::OpenPopup(
 				StackablePopupOpen::BlameFile(BlameFileOpen {
 					file_path: path,
@@ -207,7 +201,7 @@ impl RevisionFilesComponent {
 	}
 
 	fn file_history(&self) -> bool {
-		self.selected_file_path().map_or(false, |path| {
+		self.selected_file_path().is_some_and(|path| {
 			self.queue.push(InternalEvent::OpenPopup(
 				StackablePopupOpen::FileRevlog(FileRevOpen::new(
 					path,
@@ -277,11 +271,7 @@ impl RevisionFilesComponent {
 		}
 	}
 
-	fn draw_tree<B: Backend>(
-		&self,
-		f: &mut Frame<B>,
-		area: Rect,
-	) -> Result<()> {
+	fn draw_tree(&self, f: &mut Frame, area: Rect) -> Result<()> {
 		let tree_height = usize::from(area.height.saturating_sub(2));
 		let tree_width = usize::from(area.width);
 
@@ -380,7 +370,7 @@ impl RevisionFilesComponent {
 		Ok(title)
 	}
 
-	fn request_files(&mut self, commit: CommitId) {
+	fn request_files(&self, commit: CommitId) {
 		self.async_treefiles.spawn(AsyncTreeFilesJob::new(
 			self.repo.borrow().clone(),
 			commit,
@@ -389,11 +379,7 @@ impl RevisionFilesComponent {
 }
 
 impl DrawableComponent for RevisionFilesComponent {
-	fn draw<B: Backend>(
-		&self,
-		f: &mut Frame<B>,
-		area: Rect,
-	) -> Result<()> {
+	fn draw(&self, f: &mut Frame, area: Rect) -> Result<()> {
 		if self.is_visible() {
 			let chunks = Layout::default()
 				.direction(Direction::Horizontal)

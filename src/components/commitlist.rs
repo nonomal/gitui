@@ -22,7 +22,6 @@ use crossterm::event::Event;
 use indexmap::IndexSet;
 use itertools::Itertools;
 use ratatui::{
-	backend::Backend,
 	layout::{Alignment, Rect},
 	style::Style,
 	text::{Line, Span},
@@ -30,8 +29,8 @@ use ratatui::{
 	Frame,
 };
 use std::{
-	borrow::Cow, cell::Cell, cmp, collections::BTreeMap,
-	convert::TryFrom, rc::Rc, time::Instant,
+	borrow::Cow, cell::Cell, cmp, collections::BTreeMap, rc::Rc,
+	time::Instant,
 };
 
 const ELEMENTS_PER_LINE: usize = 9;
@@ -151,11 +150,7 @@ impl CommitList {
 					marked.windows(2).all(|w| w[0].0 + 1 == w[1].0);
 
 				let yank = if marked_consecutive {
-					format!(
-						"{}^..{}",
-						first.1.to_string(),
-						last.1.to_string()
-					)
+					format!("{}^..{}", first.1, last.1)
 				} else {
 					marked
 						.iter()
@@ -176,7 +171,7 @@ impl CommitList {
 	}
 
 	///
-	pub fn checkout(&mut self) {
+	pub fn checkout(&self) {
 		if let Some(commit_hash) =
 			self.selected_entry().map(|entry| entry.id)
 		{
@@ -248,8 +243,7 @@ impl CommitList {
 		//note: set highlights to none if there is no highlight
 		self.highlights = if highlighting
 			.as_ref()
-			.map(|set| set.is_empty())
-			.unwrap_or_default()
+			.is_some_and(|set| set.is_empty())
 		{
 			None
 		} else {
@@ -302,7 +296,6 @@ impl CommitList {
 		self.current_size.get()
 	}
 
-	#[allow(clippy::missing_const_for_fn)]
 	fn selection_max(&self) -> usize {
 		self.commits.len().saturating_sub(1)
 	}
@@ -534,7 +527,7 @@ impl CommitList {
 		let author = string_width_align(&e.author, author_width);
 
 		// commit author
-		txt.push(Span::styled::<String>(author, style_author));
+		txt.push(Span::styled(author, style_author));
 
 		txt.push(splitter.clone());
 
@@ -641,8 +634,7 @@ impl CommitList {
 										) => details
 											.upstream
 											.as_ref()
-											.map_or(
-												false,
+											.is_some_and(
 												|upstream| {
 													upstream.reference == remote_branch.reference
 												},
@@ -670,7 +662,6 @@ impl CommitList {
 		})
 	}
 
-	#[allow(clippy::missing_const_for_fn)]
 	fn relative_selection(&self) -> usize {
 		self.selection.saturating_sub(self.items.index_offset())
 	}
@@ -713,13 +704,12 @@ impl CommitList {
 		}
 	}
 
-	fn selection_highlighted(&mut self) -> bool {
+	fn selection_highlighted(&self) -> bool {
 		let commit = self.commits[self.selection];
 
 		self.highlights
 			.as_ref()
-			.map(|highlights| highlights.contains(&commit))
-			.unwrap_or_default()
+			.is_some_and(|highlights| highlights.contains(&commit))
 	}
 
 	fn needs_data(&self, idx: usize, idx_max: usize) -> bool {
@@ -749,8 +739,7 @@ impl CommitList {
 		let index_in_sync = self
 			.items
 			.index_offset_raw()
-			.map(|index| want_min == index)
-			.unwrap_or_default();
+			.is_some_and(|index| want_min == index);
 
 		if !index_in_sync || !self.is_list_in_sync() || force {
 			let commits = sync::get_commits_info(
@@ -771,7 +760,7 @@ impl CommitList {
 				self.items.set_items(
 					want_min,
 					commits,
-					&self.highlights,
+					self.highlights.as_ref(),
 				);
 			}
 		}
@@ -779,11 +768,7 @@ impl CommitList {
 }
 
 impl DrawableComponent for CommitList {
-	fn draw<B: Backend>(
-		&self,
-		f: &mut Frame<B>,
-		area: Rect,
-	) -> Result<()> {
+	fn draw(&self, f: &mut Frame, area: Rect) -> Result<()> {
 		let current_size = (
 			area.width.saturating_sub(2),
 			area.height.saturating_sub(2),
